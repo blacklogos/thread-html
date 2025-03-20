@@ -71,8 +71,64 @@ loadPatternsFromJson();
 // Track active preview tabs
 let previewTabs = {};
 
+// Function to fetch an image and convert it to base64
+async function fetchImageAsBase64(url) {
+  try {
+    console.log('Fetching image as base64:', url);
+    
+    // If URL is already a data URL, return it as is
+    if (url.startsWith('data:')) {
+      console.log('URL is already a data URL, returning as is');
+      return url;
+    }
+    
+    // If the URL is relative, it can't be fetched, so use default
+    if (!url.startsWith('http')) {
+      console.log('URL is not absolute, using default avatar');
+      return 'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f464.png';
+    }
+    
+    // Ensure the URL is HTTPS to avoid mixed content issues
+    if (url.startsWith('http:')) {
+      url = url.replace(/^http:/, 'https:');
+      console.log('Converted to HTTPS:', url);
+    }
+    
+    // Properly encode URL to handle special characters
+    const encodedUrl = encodeURI(url);
+    
+    // Try fetching with regular CORS mode
+    try {
+      const response = await fetch(encodedUrl, { 
+        mode: 'cors',
+        cache: 'force-cache' 
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+      }
+      
+      throw new Error(`Failed to fetch image: ${response.status}`);
+    } catch (corsError) {
+      console.log('CORS fetch failed:', corsError);
+      // Fall back to using the original URL with error handler in the img tag
+      console.log('Using original URL with error handler');
+      return encodedUrl;
+    }
+  } catch (error) {
+    console.error('Failed to fetch image:', error);
+    // Return a reliable default avatar
+    return 'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f464.png';
+  }
+}
+
 // Function to generate HTML content from thread data
-function generateHtmlContent(data) {
+async function generateHtmlContent(data) {
   const { posts, author, url: threadUrl } = data;
   
   // Try to get author information from metadata if available
@@ -125,6 +181,37 @@ function generateHtmlContent(data) {
   if (!avatarUrl) {
     avatarUrl = 'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f464.png';
   }
+  
+  // Ensure avatar URL is HTTPS to avoid mixed content issues
+  if (avatarUrl && avatarUrl.startsWith('http:')) {
+    console.log('Converting avatar URL from HTTP to HTTPS');
+    avatarUrl = avatarUrl.replace(/^http:/, 'https:');
+  }
+  
+  // Try to convert avatar to base64 for embedding, but don't wait too long
+  let base64Avatar = avatarUrl;
+  try {
+    console.log('Converting avatar to base64:', avatarUrl);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Fetch timeout')), 3000)
+    );
+    base64Avatar = await Promise.race([
+      fetchImageAsBase64(avatarUrl),
+      timeoutPromise
+    ]);
+    console.log('Successfully processed avatar URL');
+  } catch (error) {
+    console.error('Failed to convert avatar to base64:', error);
+    // Keep the original URL if conversion fails
+    base64Avatar = avatarUrl;
+  }
+  
+  // For testing: log the avatar URL being used
+  console.log('Using avatar URL:', 
+    typeof base64Avatar === 'string' && base64Avatar.length > 100 
+      ? base64Avatar.substring(0, 100) + '...' 
+      : base64Avatar
+  );
   
   // Ensure authorUsername is clean and valid for file naming
   let sanitizedAuthorUsername = 'unknown';
@@ -342,12 +429,32 @@ function generateHtmlContent(data) {
       border-bottom: 1px solid var(--border-color);
     }
     
+    .author-image-container {
+      position: relative;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      overflow: hidden;
+      background-color: #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .author-image-container::before {
+      content: "👤";
+      font-size: 40px;
+      line-height: 1;
+    }
+    
     .author-image {
       width: 60px;
       height: 60px;
       border-radius: 50%;
       margin-right: 20px;
       object-fit: cover;
+      display: block; /* Ensure it's not hidden */
+      background-color: #f0f0f0; /* Light background while loading */
     }
     
     .author-info {
@@ -598,7 +705,10 @@ function generateHtmlContent(data) {
 </head>
 <body>
   <div class="author-header">
-    <img src="${avatarUrl}" alt="${authorName}" class="author-image">
+    <div class="author-image-container">
+      <img src="${base64Avatar}" alt="${authorName}" class="author-image" 
+           onerror="this.onerror=null; this.src='https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f464.png'; this.style.width='60px'; this.style.height='60px';">
+    </div>
     <div class="author-info">
       <div class="author-name">${authorName}</div>
       <div class="author-username">${authorUsername}</div>
@@ -778,161 +888,167 @@ function generateHtmlContent(data) {
   };
 }
 
+// Update the message listeners to handle async generateHtmlContent
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'preview') {
-    try {
-      console.log('Background script received preview request:', request);
-      
-      if (!request.data) {
-        throw new Error('No data provided for preview');
-      }
-      
-      // Generate HTML content
-      const { htmlContent, filename } = generateHtmlContent(request.data);
-      
-      // Create a data URL for the preview (without cache busting parameter)
-      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
-      
-      // Create a new tab with the preview
-      chrome.tabs.create({ url: dataUrl, active: true }, (tab) => {
-        // Store reference to this tab for download functionality
-        previewTabs[tab.id] = {
-          htmlContent: htmlContent,
-          filename: filename,
-          originalData: request.data
-        };
+    (async () => {
+      try {
+        console.log('Background script received preview request:', request);
         
-        // Send a message to the popup that preview is ready
-        sendResponse({
-          success: true,
-          previewTabId: tab.id,
-          message: 'Preview opened in new tab'
+        if (!request.data) {
+          throw new Error('No data provided for preview');
+        }
+        
+        // Generate HTML content
+        const { htmlContent, filename } = await generateHtmlContent(request.data);
+        
+        // Create a data URL for the preview
+        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+        
+        // Create a new tab with the preview
+        chrome.tabs.create({ url: dataUrl, active: true }, (tab) => {
+          // Store reference to this tab for download functionality
+          previewTabs[tab.id] = {
+            htmlContent: htmlContent,
+            filename: filename,
+            originalData: request.data
+          };
+          
+          // Send a message to the popup that preview is ready
+          sendResponse({
+            success: true,
+            previewTabId: tab.id,
+            message: 'Preview opened in new tab'
+          });
         });
-      });
-      
-      return true; // Keep the channel open for asynchronous response
-    } catch (error) {
-      console.error('Preview error:', error);
-      sendResponse({
-        success: false,
-        error: error.message
-      });
-      return false;
-    }
+      } catch (error) {
+        console.error('Preview error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
+        });
+      }
+    })();
+    
+    return true; // Keep the channel open for asynchronous response
   }
   
   if (request.action === 'download') {
-    try {
-      console.log('Background script received download request:', request);
-      
-      let htmlContent, filename;
-      
-      // Check if this is a download from a preview tab
-      if (request.previewTabId && previewTabs[request.previewTabId]) {
-        const previewData = previewTabs[request.previewTabId];
-        htmlContent = previewData.htmlContent;
-        filename = previewData.filename;
-      } else if (request.data) {
-        // Generate HTML content from scratch
-        const result = generateHtmlContent(request.data);
-        htmlContent = result.htmlContent;
-        filename = result.filename;
-      } else {
-        throw new Error('No data provided for download');
-      }
-      
-      // Create a data URL for the download (without cache busting parameter)
-      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
-      
-      console.log('Starting download with filename:', filename);
-      
-      chrome.downloads.download({
-        url: dataUrl,
-        filename: filename,
-        saveAs: true
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error('Download error:', chrome.runtime.lastError);
-          sendResponse({ 
-            success: false, 
-            error: chrome.runtime.lastError.message 
-          });
-          return;
+    (async () => {
+      try {
+        console.log('Background script received download request:', request);
+        
+        let htmlContent, filename;
+        
+        // Check if this is a download from a preview tab
+        if (request.previewTabId && previewTabs[request.previewTabId]) {
+          const previewData = previewTabs[request.previewTabId];
+          htmlContent = previewData.htmlContent;
+          filename = previewData.filename;
+        } else if (request.data) {
+          // Generate HTML content from scratch
+          const result = await generateHtmlContent(request.data);
+          htmlContent = result.htmlContent;
+          filename = result.filename;
+        } else {
+          throw new Error('No data provided for download');
         }
         
-        console.log('Download started with ID:', downloadId);
+        // Create a data URL for the download
+        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
         
-        // Send success response
-        sendResponse({ 
-          success: true, 
-          downloadId: downloadId,
+        console.log('Starting download with filename:', filename);
+        
+        chrome.downloads.download({
+          url: dataUrl,
           filename: filename,
+          saveAs: true
+        }, (downloadId) => {
+          if (chrome.runtime.lastError) {
+            console.error('Download error:', chrome.runtime.lastError);
+            sendResponse({ 
+              success: false, 
+              error: chrome.runtime.lastError.message 
+            });
+            return;
+          }
+          
+          console.log('Download started with ID:', downloadId);
+          
+          // Send success response
+          sendResponse({ 
+            success: true, 
+            downloadId: downloadId,
+            filename: filename,
+            timestamp: new Date().toISOString()
+          });
+        });
+      } catch (error) {
+        console.error('Background script error:', error);
+        sendResponse({ 
+          success: false, 
+          error: error.message,
           timestamp: new Date().toISOString()
         });
-      });
-      
-      // Return true to indicate we'll send a response asynchronously
-      return true;
-    } catch (error) {
-      console.error('Background script error:', error);
-      sendResponse({ 
-        success: false, 
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-    }
+      }
+    })();
+    
+    // Return true to indicate we'll send a response asynchronously
+    return true;
   }
   
   if (request.action === 'downloadFromPreview') {
-    try {
-      const previewTabId = request.previewTabId;
-      
-      if (!previewTabId || !previewTabs[previewTabId]) {
-        throw new Error('Invalid preview tab ID or preview not found');
-      }
-      
-      const previewData = previewTabs[previewTabId];
-      
-      // Create data URL for the download
-      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(previewData.htmlContent);
-      
-      console.log('Starting download from preview with filename:', previewData.filename);
-      
-      chrome.downloads.download({
-        url: dataUrl,
-        filename: previewData.filename,
-        saveAs: true
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error('Download error:', chrome.runtime.lastError);
-          sendResponse({ 
-            success: false, 
-            error: chrome.runtime.lastError.message 
-          });
-          return;
+    (async () => {
+      try {
+        const previewTabId = request.previewTabId;
+        
+        if (!previewTabId || !previewTabs[previewTabId]) {
+          throw new Error('Invalid preview tab ID or preview not found');
         }
         
-        console.log('Download started with ID:', downloadId);
+        const previewData = previewTabs[previewTabId];
         
-        // Send success response
-        sendResponse({ 
-          success: true, 
-          downloadId: downloadId,
+        // Create data URL for the download
+        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(previewData.htmlContent);
+        
+        console.log('Starting download from preview with filename:', previewData.filename);
+        
+        chrome.downloads.download({
+          url: dataUrl,
           filename: previewData.filename,
+          saveAs: true
+        }, (downloadId) => {
+          if (chrome.runtime.lastError) {
+            console.error('Download error:', chrome.runtime.lastError);
+            sendResponse({ 
+              success: false, 
+              error: chrome.runtime.lastError.message 
+            });
+            return;
+          }
+          
+          console.log('Download started with ID:', downloadId);
+          
+          // Send success response
+          sendResponse({ 
+            success: true, 
+            downloadId: downloadId,
+            filename: previewData.filename,
+            timestamp: new Date().toISOString()
+          });
+        });
+      } catch (error) {
+        console.error('Download from preview error:', error);
+        sendResponse({ 
+          success: false, 
+          error: error.message,
           timestamp: new Date().toISOString()
         });
-      });
-      
-      // Return true to indicate we'll send a response asynchronously
-      return true;
-    } catch (error) {
-      console.error('Download from preview error:', error);
-      sendResponse({ 
-        success: false, 
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-    }
+      }
+    })();
+    
+    // Return true to indicate we'll send a response asynchronously
+    return true;
   }
 });
 
