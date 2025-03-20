@@ -1,5 +1,25 @@
 # Development Journal for Threads to HTML
 
+## Version 0.3.1 (March 22, 2024)
+
+### Bug Fixes
+
+1. **Fixed CORS issues with avatar images:**
+   - Removed fetch API call for avatar images to avoid CORS restrictions
+   - Simplified image loading strategy to rely on browser's native handling
+   - Enhanced fallback mechanism with initials-based avatars
+
+2. **Fixed copy text functionality:**
+   - Reimplemented text extraction logic for more reliable operation
+   - Fixed regex pattern issues in text processing
+   - Improved HTML-to-text conversion for better readability
+   - Enhanced fallback mechanisms for clipboard access
+
+3. **Technical improvements:**
+   - Moved copy functionality to a dedicated function for better organization
+   - Improved error handling and user feedback
+   - Added more graceful degradation for unsupported environments
+
 ## Version 0.3 (March 22, 2024)
 
 ### Changes Implemented

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Threads to HTML",
-  "version": "0.3",
+  "version": "0.3.1",
   "description": "Convert Threads posts to HTML",
   "permissions": [
     "activeTab",

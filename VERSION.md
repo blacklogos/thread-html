@@ -1,5 +1,23 @@
 # Version History
 
+## v0.3.1 - March 22, 2024
+
+### Release Notes
+
+Bug fixes for CORS issues and copy text functionality.
+
+#### Key Fixes
+- Fixed CORS issues with avatar image loading by avoiding fetch API
+- Fixed copy text not working by rewriting the text extraction logic
+- Fixed regex pattern issues in clipboard operations
+- Improved error handling throughout the app
+
+#### Technical Details
+- Simplified image loading to rely on browser's native CORS handling
+- Moved copy functionality to a dedicated function
+- Added better fallback for clipboard operations
+- Fixed escape character issues in regex patterns
+
 ## v0.3.0 - March 22, 2024
 
 ### Release Notes
