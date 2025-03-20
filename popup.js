@@ -3,8 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const convertButton = document.getElementById('convert');
   const status = document.getElementById('status');
   
-  // Keep track of current preview panel
-  let currentPreviewPanelId = null;
+  // Keep track of current preview tab
+  let currentPreviewTabId = null;
   
   // Function to inject content script
   async function injectContentScript(tabId) {
@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return response.data;
   }
   
-  // Function to generate HTML preview in side panel
+  // Function to generate HTML preview
   async function generatePreview() {
     try {
       previewButton.disabled = true;
@@ -95,10 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
       
       status.textContent = 'Generating preview...';
       
-      // Send message to create side panel preview
       const previewResponse = await chrome.runtime.sendMessage({
-        action: 'previewInSidePanel',
-        tabId: tab.id,
+        action: 'preview',
         data: threadData
       });
       
@@ -108,16 +106,8 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(previewResponse.error || 'Failed to generate preview');
       }
       
-      currentPreviewPanelId = previewResponse.panelId;
-      
-      // Show appropriate message based on preview type
-      if (previewResponse.type === 'sidePanel') {
-        status.textContent = 'Preview opened in side panel';
-      } else if (previewResponse.type === 'tab') {
-        status.textContent = 'Preview opened in new tab (side panel unavailable)';
-      } else {
-        status.textContent = previewResponse.message || 'Preview opened';
-      }
+      currentPreviewTabId = previewResponse.previewTabId;
+      status.textContent = 'Preview opened in new tab';
       
       // Re-enable buttons
       previewButton.disabled = false;
@@ -138,13 +128,13 @@ document.addEventListener('DOMContentLoaded', () => {
       previewButton.disabled = true;
       convertButton.disabled = true;
       
-      // If we have an active preview, download from that
-      if (currentPreviewPanelId) {
+      // Check if we have an active preview to download from
+      if (currentPreviewTabId) {
         status.textContent = 'Downloading from preview...';
         
         const downloadResponse = await chrome.runtime.sendMessage({
-          action: 'downloadFromSidePanel',
-          panelId: currentPreviewPanelId
+          action: 'downloadFromPreview',
+          previewTabId: currentPreviewTabId
         });
         
         console.log('Download response:', downloadResponse);

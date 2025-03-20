@@ -284,8 +284,8 @@
       "name": "Multiple line breaks",
       "pattern": "\\n{3,}",
       "flags": "g",
-      "replacement": "\\n\\n",
-      "description": "Converts multiple consecutive line breaks to double line break"
+      "replacement": "\n\n",
+      "description": "Reduces multiple line breaks to double line breaks"
     },
     {
       "name": "Leading/trailing whitespace",
@@ -295,39 +295,186 @@
       "description": "Removes leading/trailing whitespace on each line"
     },
     {
-      "name": "Small numbers at beginning",
-      "pattern": "^(\\d{1,2})\\n(\\d{1,2})\\n(\\d{1,2})\\n",
-      "flags": "m",
+      "name": "Single number line",
+      "pattern": "^\\d+$",
+      "flags": "gm",
       "replacement": "",
-      "description": "Removes sequences of small numbers at beginning of text"
+      "description": "Removes lines containing only a single number"
     },
     {
-      "name": "View count with number",
-      "pattern": "\\n\\d+ lượt xem$",
-      "flags": "m",
-      "replacement": "",
-      "description": "Removes view count with number at end of text"
-    },
-    {
-      "name": "Metrics at end of post",
-      "pattern": "\\n\\d+\\n\\d+\\n\\d+$",
-      "flags": "m",
-      "replacement": "",
-      "description": "Removes metrics at the end of a post"
-    },
-    {
-      "name": "Engagement buttons",
-      "pattern": "\\n(Thích|Like)\\n(Bình luận|Comment)\\n(Chia sẻ|Share)(\\n|$)",
+      "name": "View count with number (Vietnamese)",
+      "pattern": "\\d+\\s*lượt xem",
       "flags": "g",
       "replacement": "",
-      "description": "Removes engagement button text in both English and Vietnamese"
+      "description": "Removes view count with number in Vietnamese"
     },
     {
-      "name": "Reaction counts",
-      "pattern": "\\n\\d+ (người|people|others)",
+      "name": "View activity with number",
+      "pattern": "(^|\\n)\\d+\\n\\s*Xem hoạt động",
       "flags": "g",
       "replacement": "",
-      "description": "Removes reaction counts in both English and Vietnamese"
+      "description": "Removes number followed by view activity text"
+    },
+    {
+      "name": "Time with unit (Vietnamese)",
+      "pattern": "(^|\\n)\\d+\\s*(giờ|phút|giây|ngày)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes time with unit at start of line or after newline"
+    },
+    {
+      "name": "View count with K (Vietnamese)",
+      "pattern": "\\b\\d+K\\s*lượt xem\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes view count with K suffix in Vietnamese"
+    },
+    {
+      "name": "Engagement metrics with numbers (Vietnamese)",
+      "pattern": "\\b\\d+[,.]?\\d*K?\\s*(thích|trả lời|chia sẻ)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes engagement metrics with numbers in Vietnamese"
+    },
+    {
+      "name": "Thread UI elements (Vietnamese)",
+      "pattern": "\\b(Thread trả lời|Xem hoạt động|Thread)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes Thread UI elements in Vietnamese"
+    },
+    {
+      "name": "View count with K (Vietnamese)",
+      "pattern": "\\b\\d+[,.]?\\d*K?\\s*lượt xem\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes view count (including K format) in Vietnamese"
+    },
+    {
+      "name": "Time with unit and number (Vietnamese)",
+      "pattern": "\\b\\d+\\s*(ngày|giờ|phút|giây)( trước)?\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes time with unit and number in Vietnamese"
+    },
+    {
+      "name": "Single numbers",
+      "pattern": "^\\d+$",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes standalone numbers"
+    },
+    {
+      "name": "Time indicators (Vietnamese)",
+      "pattern": "\\b\\d+\\s*(giờ|phút|giây|ngày)( trước)?\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes time indicators in Vietnamese"
+    },
+    {
+      "name": "Other user handles",
+      "pattern": "@[a-zA-Z0-9._-]+\\b(?!\\s*trả lời)",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes other user handles except in reply context"
+    },
+    {
+      "name": "Empty lines at start/end",
+      "pattern": "^\\n+|\\n+$",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes empty lines at start and end of content"
+    },
+    {
+      "name": "Activity view with number",
+      "pattern": "^\\d+\\s*\\n\\s*Xem hoạt động",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes number followed by view activity text"
+    },
+    {
+      "name": "Time with units (Vietnamese)",
+      "pattern": "^\\d+\\s*(giờ|phút|ngày)\\b",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes numbers with time units at start of line"
+    },
+    {
+      "name": "Inline time with units (Vietnamese)",
+      "pattern": "\\b\\d+\\s*(giờ|phút|ngày)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes numbers with time units anywhere in text"
+    },
+    {
+      "name": "Time with unit (Vietnamese)",
+      "pattern": "\\b\\d+\\s*giờ\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes time with unit in Vietnamese"
+    },
+    {
+      "name": "View activity indicator",
+      "pattern": "\\nXem hoạt động",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes 'Xem hoạt động' indicator"
+    },
+    {
+      "name": "View activity indicator with number",
+      "pattern": "^\\d+\\s*\\n\\s*Xem hoạt động",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes number followed by view activity text"
+    },
+    {
+      "name": "Exact \\d+\\nXem hoạt động",
+      "pattern": "^\\d+\\nXem hoạt động",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes the exact string '\\d+\\nXem hoạt động'"
+    },
+    {
+      "name": "Time with unit at start",
+      "pattern": "^\\d+\\s+giờ(?:<br>|$)",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes time with unit at start, including <br> tag"
+    },
+    {
+      "name": "Time with unit after break",
+      "pattern": "<br>\\d+\\s+giờ(?:<br>|$)",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes time with unit after line break"
+    },
+    {
+      "name": "View activity exact format",
+      "pattern": "\\d+\\\\nXem hoạt động",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes number followed by literal \\n and view activity text"
+    },
+    {
+      "name": "View activity with breaks",
+      "pattern": "(?:<br>)?\\d+\\\\nXem hoạt động(?:<br>)?",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes view activity with optional HTML breaks"
+    },
+    {
+      "name": "Multiple breaks",
+      "pattern": "(?:<br>){2,}",
+      "flags": "g",
+      "replacement": "<br>",
+      "description": "Reduces multiple HTML breaks to single break"
+    },
+    {
+      "name": "Empty lines",
+      "pattern": "^\\s*<br>\\s*|\\s*<br>\\s*$",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes empty lines with HTML breaks"
     }
   ]
 } 

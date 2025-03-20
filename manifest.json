@@ -2,13 +2,11 @@
   "manifest_version": 3,
   "name": "Threads to HTML",
   "version": "1.0",
-  "description": "Convert Threads posts to HTML files with preview capability",
+  "description": "Convert Threads posts to HTML files",
   "permissions": [
     "activeTab",
     "scripting",
-    "downloads",
-    "sidePanel",
-    "tabs"
+    "downloads"
   ],
   "host_permissions": [
     "*://*.threads.net/*"
@@ -25,14 +23,5 @@
   ],
   "background": {
     "service_worker": "background.js"
-  },
-  "side_panel": {
-    "default_path": "panel.html"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["panel.html", "panel.js"],
-      "matches": ["*://*.threads.net/*", "https://*/*", "data:*"]
-    }
-  ]
+  }
 } 

@@ -46,8 +46,8 @@ function initializeDefaultPatterns() {
   ];
 }
 
-// Track active preview panels instead of tabs
-let previewPanels = {};
+// Track active preview tabs
+let previewTabs = {};
 
 // Function to generate HTML content from thread data
 function generateHtmlContent(data) {
@@ -116,60 +116,146 @@ function generateHtmlContent(data) {
     }
   }
   
-  const timestamp = new Date().getTime();
-  
-  // Process thread content
-  let threadContent = '';
-  let wordCount = 0;
-  
-  // Check if we have posts
-  if (posts && posts.length > 0) {
-    const postsWithContent = posts.filter(post => post.text && post.text.trim());
+  // Function to create author-specific cleaning patterns
+  function createAuthorCleaningPatterns(username) {
+    const patterns = [...cleaningPatterns];
     
-    postsWithContent.forEach((post, index) => {
-      const text = post.text || '';
-      const words = text.split(/\s+/).filter(Boolean);
-      wordCount += words.length;
+    if (username && username !== 'unknown') {
+      // Extract username without @ if present
+      const usernameWithoutAt = username.startsWith('@') 
+        ? username.substring(1) 
+        : username;
       
-      // Process the post content
-      let postContent = text;
+      // Escape special characters in username for regex
+      const escapedUsername = usernameWithoutAt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
-      // Add media (image or link) if available
-      let mediaContent = '';
-      
-      // Add image if available
-      if (post.mediaUrls && post.mediaUrls.length > 0) {
-        const imageUrl = post.mediaUrls[0]; // Take the first image
-        mediaContent = `<div class="post-media"><img src="${imageUrl}" alt="Post image" class="post-image"></div>`;
-      }
-      
-      // Extract links from the text
-      const linkRegex = /(https?:\/\/[^\s]+)/g;
-      const links = text.match(linkRegex);
-      
-      if (!mediaContent && links && links.length > 0) {
-        // Use the first link if no image was added
-        mediaContent = `<div class="post-link"><a href="${links[0]}" target="_blank">${links[0]}</a></div>`;
-      }
-      
-      // Add the post with proper formatting
-      threadContent += `<div class="post">
-        <div class="post-content">${postContent}</div>
-        ${mediaContent}
-      </div>`;
-      
-      // Add divider between posts, except for the last post
-      if (index < postsWithContent.length - 1) {
-        threadContent += `<div class="post-divider">---</div>`;
-      }
-    });
+      // Add patterns to remove this specific author's handle
+      patterns.push({ 
+        pattern: new RegExp(`^${escapedUsername}\\s*$`, 'gim'), 
+        replacement: '' 
+      });
+      patterns.push({ 
+        pattern: new RegExp(`^@${escapedUsername}\\s*$`, 'gim'), 
+        replacement: '' 
+      });
+      patterns.push({ 
+        pattern: new RegExp(`\\s${escapedUsername}\\s`, 'g'), 
+        replacement: ' ' 
+      });
+      patterns.push({ 
+        pattern: new RegExp(`\\s@${escapedUsername}\\s`, 'g'), 
+        replacement: ' ' 
+      });
+    }
+    
+    return patterns;
   }
   
-  // Calculate read time (avg reading speed: 200 words per minute)
-  const readTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
+  // Get cleaned posts - only extract the pure content
+  const cleanedPosts = posts.map(post => {
+    // Clean up the post text by removing metadata, usernames, dates, metrics
+    let cleanText = post.postText || 'No content available';
+    let mediaContent = [];
+    
+    // Extract all URLs before cleaning
+    const urlMatches = cleanText.match(/(https?:\/\/[^\s]+)/gi) || [];
+    
+    // Process each URL
+    urlMatches.forEach(url => {
+      // Check if it's a YouTube URL
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        mediaContent.push({
+          type: 'youtube',
+          url: url
+        });
+      }
+      // Check if it's an image URL
+      else if (url.match(/\.(jpg|jpeg|png|gif)$/i)) {
+        mediaContent.push({
+          type: 'image',
+          url: url
+        });
+      } 
+      // Other links
+      else {
+        mediaContent.push({
+          type: 'link',
+          url: url
+        });
+      }
+    });
+    
+    // Get cleaning patterns including author-specific ones
+    const patterns = createAuthorCleaningPatterns(authorUsername);
+    
+    // Apply all patterns to clean the text
+    patterns.forEach(({ pattern, replacement }) => {
+      cleanText = cleanText.replace(pattern, replacement);
+    });
+    
+    // Remove URLs from the text since we'll add them back in a structured way
+    cleanText = cleanText.replace(/(https?:\/\/[^\s]+)/gi, '');
+    
+    // Add any final cleanup needed
+    cleanText = cleanText.trim();
+    
+    // Add back media content if exists
+    if (mediaContent.length > 0) {
+      mediaContent.forEach(media => {
+        if (media.type === 'youtube') {
+          cleanText += `\n[YouTube: ${media.url}]`;
+        } else if (media.type === 'image') {
+          cleanText += `\n[Image: ${media.url}]`;
+        } else {
+          cleanText += `\n[Link: ${media.url}]`;
+        }
+      });
+    }
+    
+    return cleanText;
+  });
   
-  // Generate HTML content
-  const htmlContent = `<!DOCTYPE html>
+  // Filter out empty posts
+  const nonEmptyPosts = cleanedPosts.filter(post => 
+    post.length > 0 && 
+    post !== 'No content available' && 
+    !/^\s*$/.test(post)
+  );
+  
+  // Use non-empty posts or default to original cleaned posts if all were filtered out
+  const finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
+  
+  // Join all cleaned posts with a line break
+  let threadContent = finalPosts.join('\n\n');
+  
+  // Convert newlines to <br> tags
+  threadContent = threadContent.replace(/\n/g, '<br>');
+  
+  // Apply HTML-specific cleaning patterns
+  cleaningPatterns.forEach(({ pattern, replacement }) => {
+    if (pattern.toString().includes('<br>')) {
+      threadContent = threadContent.replace(pattern, replacement);
+    }
+  });
+  
+  // Clean up multiple breaks and empty lines
+  threadContent = threadContent
+    .replace(/(?:<br>){3,}/g, '<br><br>')  // Reduce multiple breaks to double
+    .replace(/^\\s*<br>|<br>\\s*$/g, '')   // Remove breaks at start/end
+    .trim();
+  
+  // Count total words for read time calculation
+  const totalWords = threadContent.split(/\s+/).length;
+  
+  // Estimate read time (average reading speed is ~200-250 words per minute)
+  const readTimeMinutes = Math.max(1, Math.round(totalWords / 200));
+  
+  // Generate a unique timestamp for this export
+  const timestamp = Date.now();
+  
+  console.log('Generating HTML content for author:', authorName);
+  const htmlContent = `
+<!DOCTYPE html>
 <html>
 <head>
   <title>${authorName}'s Thread</title>
@@ -251,60 +337,60 @@ function generateHtmlContent(data) {
       margin-top: 5px;
     }
     
-    /* Article section */
+    /* Article content */
     .article {
-      font-size: 1.1rem;
-      line-height: 1.8;
-      margin-bottom: 40px;
+      font-size: 1.05rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-bottom: 20px;
     }
     
-    /* Post styles */
-    .post {
-      margin-bottom: 25px;
-    }
-    
-    .post-content {
-      margin-bottom: 15px;
-    }
-    
-    .post-media {
-      margin: 15px 0;
-    }
-    
-    .post-image {
-      max-width: 100%;
-      border-radius: 8px;
-      margin-top: 10px;
-    }
-    
-    .post-link {
+    .article br {
+      display: block;
       margin: 10px 0;
-      padding: 10px;
-      background-color: #f8f9fa;
-      border-radius: 8px;
-      word-break: break-all;
+      content: "";
     }
     
-    .post-divider {
-      text-align: center;
-      color: var(--muted-color);
-      margin: 20px 0;
-      opacity: 0.5;
-    }
-    
-    /* Footer section */
+    /* Footer */
     .footer {
-      margin-top: 40px;
+      margin-top: 60px;
       padding-top: 20px;
       border-top: 1px solid var(--border-color);
-      font-size: 0.9rem;
-      color: var(--muted-color);
       text-align: center;
+      color: var(--muted-color);
+      font-size: 0.9rem;
     }
     
-    @media only screen and (max-width: 600px) {
+    .download-info {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background-color: #28a745;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      z-index: 1000;
+      animation: fadeOut 5s forwards 2s;
+    }
+    
+    @keyframes fadeOut {
+      to {
+        opacity: 0;
+        visibility: hidden;
+      }
+    }
+    
+    /* Responsive styles */
+    @media (max-width: 600px) {
       body {
         padding: 20px 15px;
+      }
+      
+      .author-image {
+        width: 50px;
+        height: 50px;
       }
       
       .author-name {
@@ -314,6 +400,69 @@ function generateHtmlContent(data) {
       .article {
         font-size: 1rem;
       }
+    }
+    
+    /* Print styles */
+    @media print {
+      body {
+        font-size: 12pt;
+        line-height: 1.5;
+        color: #000;
+      }
+      
+      .footer, .download-info {
+        display: none;
+      }
+    }
+    
+    .post-image {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin: 15px 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .post-link {
+      display: block;
+      margin: 15px 0;
+      padding: 12px 15px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--text-color);
+      background-color: #f8f9fa;
+      transition: all 0.2s ease;
+      font-size: 0.95em;
+      word-break: break-all;
+    }
+    
+    .post-link:hover {
+      background-color: #f1f3f5;
+      border-color: #dee2e6;
+      text-decoration: none;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .post-link::before {
+      margin-right: 8px;
+      opacity: 0.7;
+    }
+    
+    .post-link.youtube::before {
+      content: '▶️';
+    }
+    
+    .post-link.external::before {
+      content: '🔗';
+    }
+    
+    .post-link .link-text {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   </style>
 </head>
@@ -330,7 +479,16 @@ function generateHtmlContent(data) {
     </div>
   </div>
   
-  <div class="article">${threadContent}</div>
+  <div class="article">${threadContent
+    .replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy">')
+    .replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, (match, url) => {
+      const linkText = url.includes('youtu.be') ? 'Watch on YouTube' : url;
+      return `<a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">${linkText}</span></a>`;
+    })
+    .replace(/\[Link: (https?:\/\/[^\]]+)\]/g, (match, url) => {
+      return `<a href="${url}" class="post-link external" target="_blank" rel="noopener noreferrer"><span class="link-text">${url}</span></a>`;
+    })
+    .replace(/@(\w+)/g, '<a href="https://www.threads.net/@$1" target="_blank">@$1</a>')}</div>
   
   <div class="footer">
     <p>Source: <a href="${threadUrl}" target="_blank">Threads</a></p>
@@ -346,296 +504,7 @@ function generateHtmlContent(data) {
   };
 }
 
-// Function to open a side panel with HTML content
-async function openSidePanel(tabId, htmlContent, data) {
-  console.log('Attempting to open side panel for tab:', tabId);
-  
-  // Create a unique ID for this panel
-  const panelId = `panel_${Date.now()}`;
-  
-  try {
-    // Check if the side panel API is available and properly implemented
-    if (chrome.sidePanel && typeof chrome.sidePanel.setOptions === 'function' && typeof chrome.sidePanel.open === 'function') {
-      console.log('Side panel API is available, attempting to use it');
-      
-      try {
-        // Set the panel content
-        await chrome.sidePanel.setOptions({
-          tabId: tabId,
-          path: 'panel.html',
-          enabled: true
-        });
-        
-        // Store the panel data for later use
-        previewPanels[panelId] = {
-          tabId: tabId,
-          htmlContent: htmlContent,
-          filename: `thread_${data.sanitizedAuthorUsername}_${data.timestamp}.html`,
-          originalData: data,
-          timestamp: Date.now(),
-          type: 'sidePanel'
-        };
-        
-        // Open the side panel
-        await chrome.sidePanel.open({ tabId });
-        
-        console.log('Side panel opened successfully');
-        
-        // Return the panel ID
-        return panelId;
-      } catch (sidePanelError) {
-        console.error('Failed to open side panel despite API being available:', sidePanelError);
-        // Fall through to fallback mechanism
-        throw new Error(`Side panel API failed: ${sidePanelError.message}`);
-      }
-    } else {
-      console.log('Side panel API not available, falling back to tab preview');
-      // Fall through to fallback mechanism
-      throw new Error('Side panel API not available');
-    }
-  } catch (error) {
-    console.warn('Using fallback preview method (new tab):', error.message);
-    
-    // Fallback: Use a new tab preview instead
-    return new Promise((resolve, reject) => {
-      try {
-        // Create a data URL for the preview
-        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
-        
-        // Create a new tab with the preview
-        chrome.tabs.create({ url: dataUrl, active: true }, (tab) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(`Failed to create preview tab: ${chrome.runtime.lastError.message}`));
-            return;
-          }
-          
-          // Store reference to this tab for download functionality
-          const fallbackPanelId = `tab_${tab.id}_${Date.now()}`;
-          previewPanels[fallbackPanelId] = {
-            tabId: tab.id,
-            htmlContent: htmlContent,
-            filename: `thread_${data.sanitizedAuthorUsername}_${data.timestamp}.html`,
-            originalData: data,
-            timestamp: Date.now(),
-            type: 'tab'
-          };
-          
-          console.log('Created fallback preview tab with ID:', tab.id);
-          resolve(fallbackPanelId);
-        });
-      } catch (fallbackError) {
-        reject(new Error(`Fallback preview failed: ${fallbackError.message}`));
-      }
-    });
-  }
-}
-
-// Listen for messages
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // Panel content request handler
-  if (request.action === 'getPanelContent') {
-    try {
-      console.log('Background script received panel content request:', request);
-      
-      // Find the panel for this tab
-      const tabId = request.tabId || (sender.tab && sender.tab.id);
-      
-      if (!tabId) {
-        throw new Error('No tab ID provided for panel content request');
-      }
-      
-      // Find the panel data
-      let panelData = null;
-      let panelId = null;
-      
-      Object.keys(previewPanels).forEach(id => {
-        if (previewPanels[id].tabId === tabId) {
-          panelData = previewPanels[id];
-          panelId = id;
-        }
-      });
-      
-      if (!panelData) {
-        // For the tab preview case, the data might be stored with the tab's ID directly
-        if (previewPanels[tabId]) {
-          panelData = previewPanels[tabId];
-          panelId = tabId;
-        } else {
-          throw new Error('No panel data found for tab');
-        }
-      }
-      
-      // Send the panel content
-      sendResponse({
-        success: true,
-        panelId: panelId,
-        htmlContent: panelData.htmlContent,
-        type: panelData.type || 'unknown'
-      });
-      
-      return false;
-    } catch (error) {
-      console.error('Panel content request error:', error);
-      sendResponse({
-        success: false,
-        error: error.message
-      });
-      return false;
-    }
-  }
-  
-  // Panel close handler
-  if (request.action === 'closeSidePanel') {
-    try {
-      const tabId = sender.tab && sender.tab.id;
-      
-      if (!tabId) {
-        throw new Error('No tab ID found for panel close request');
-      }
-      
-      // Find the panel data
-      let panelData = null;
-      let panelId = null;
-      
-      Object.keys(previewPanels).forEach(id => {
-        if (previewPanels[id].tabId === tabId) {
-          panelData = previewPanels[id];
-          panelId = id;
-        }
-      });
-      
-      if (panelData) {
-        // Check the type of preview
-        if (panelData.type === 'sidePanel') {
-          // Close the side panel if the API is available
-          if (chrome.sidePanel && chrome.sidePanel.close) {
-            chrome.sidePanel.close({ tabId });
-          }
-        } else if (panelData.type === 'tab') {
-          // Close the tab if it's a tab preview
-          chrome.tabs.remove(tabId);
-        }
-        
-        // Cleanup
-        delete previewPanels[panelId];
-      }
-      
-      sendResponse({ success: true });
-      return false;
-    } catch (error) {
-      console.error('Panel close error:', error);
-      sendResponse({
-        success: false,
-        error: error.message
-      });
-      return false;
-    }
-  }
-
-  // Handle preview request (tries side panel first, falls back to tab)
-  if (request.action === 'previewInSidePanel') {
-    try {
-      console.log('Background script received preview request:', request);
-      
-      if (!request.data) {
-        throw new Error('No data provided for preview');
-      }
-      
-      // Generate HTML content
-      const htmlResult = generateHtmlContent(request.data);
-      
-      // Attempt to open side panel with the content (with fallback)
-      openSidePanel(request.tabId, htmlResult.htmlContent, htmlResult)
-        .then(panelId => {
-          // Get panel type to inform popup
-          const panelType = previewPanels[panelId]?.type || 'unknown';
-          const message = panelType === 'sidePanel' 
-            ? 'Preview opened in side panel' 
-            : 'Preview opened in new tab';
-          
-          // Send a message to the popup that preview is ready
-          sendResponse({
-            success: true,
-            panelId: panelId,
-            type: panelType,
-            message: message
-          });
-        })
-        .catch(error => {
-          console.error('Preview creation error:', error);
-          sendResponse({
-            success: false,
-            error: error.message
-          });
-        });
-      
-      return true; // Keep the channel open for asynchronous response
-    } catch (error) {
-      console.error('Preview error:', error);
-      sendResponse({
-        success: false,
-        error: error.message
-      });
-      return false;
-    }
-  }
-  
-  // Handle download from side panel or tab preview
-  if (request.action === 'downloadFromSidePanel') {
-    try {
-      console.log('Background script received download request:', request);
-      
-      const panelId = request.panelId;
-      
-      if (!panelId || !previewPanels[panelId]) {
-        throw new Error('Invalid panel ID or preview not found');
-      }
-      
-      const panelData = previewPanels[panelId];
-      
-      // Create data URL for the download
-      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(panelData.htmlContent);
-      
-      console.log('Starting download with filename:', panelData.filename);
-      
-      chrome.downloads.download({
-        url: dataUrl,
-        filename: panelData.filename,
-        saveAs: true
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error('Download error:', chrome.runtime.lastError);
-          sendResponse({ 
-            success: false, 
-            error: chrome.runtime.lastError.message 
-          });
-          return;
-        }
-        
-        console.log('Download started with ID:', downloadId);
-        
-        // Send success response
-        sendResponse({ 
-          success: true, 
-          downloadId: downloadId,
-          filename: panelData.filename,
-          timestamp: new Date().toISOString()
-        });
-      });
-      
-      // Return true to indicate we'll send a response asynchronously
-      return true;
-    } catch (error) {
-      console.error('Download error:', error);
-      sendResponse({ 
-        success: false, 
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-    }
-  }
-
-  // Original preview handler (fallback method)
   if (request.action === 'preview') {
     try {
       console.log('Background script received preview request:', request);
@@ -653,7 +522,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // Create a new tab with the preview
       chrome.tabs.create({ url: dataUrl, active: true }, (tab) => {
         // Store reference to this tab for download functionality
-        previewPanels[tab.id] = {
+        previewTabs[tab.id] = {
           htmlContent: htmlContent,
           filename: filename,
           originalData: request.data
@@ -678,16 +547,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
   
-  // Original download handler
   if (request.action === 'download') {
     try {
       console.log('Background script received download request:', request);
       
       let htmlContent, filename;
       
-      // Check if this is a download from a preview panel
-      if (request.panelId && previewPanels[request.panelId]) {
-        const previewData = previewPanels[request.panelId];
+      // Check if this is a download from a preview tab
+      if (request.previewTabId && previewTabs[request.previewTabId]) {
+        const previewData = previewTabs[request.previewTabId];
         htmlContent = previewData.htmlContent;
         filename = previewData.filename;
       } else if (request.data) {
@@ -741,16 +609,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
   
-  // Fallback for original handler for backwards compatibility
   if (request.action === 'downloadFromPreview') {
     try {
       const previewTabId = request.previewTabId;
       
-      if (!previewTabId || !previewPanels[previewTabId]) {
+      if (!previewTabId || !previewTabs[previewTabId]) {
         throw new Error('Invalid preview tab ID or preview not found');
       }
       
-      const previewData = previewPanels[previewTabId];
+      const previewData = previewTabs[previewTabId];
       
       // Create data URL for the download
       const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(previewData.htmlContent);
@@ -795,10 +662,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Listen for tab close events to clean up preview panels
+// Listen for tab close events to clean up preview tabs
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (previewPanels[tabId]) {
-    console.log('Preview panel closed, cleaning up:', tabId);
-    delete previewPanels[tabId];
+  if (previewTabs[tabId]) {
+    console.log('Preview tab closed, cleaning up:', tabId);
+    delete previewTabs[tabId];
   }
 }); 
