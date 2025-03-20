@@ -74,7 +74,7 @@ let previewTabs = {};
 // Function to fetch an image and convert it to base64
 async function fetchImageAsBase64(url) {
   try {
-    console.log('Fetching image as base64:', url);
+    console.log('Attempting to use URL directly:', url);
     
     // If URL is already a data URL, return it as is
     if (url.startsWith('data:')) {
@@ -94,34 +94,11 @@ async function fetchImageAsBase64(url) {
       console.log('Converted to HTTPS:', url);
     }
     
-    // Properly encode URL to handle special characters
-    const encodedUrl = encodeURI(url);
-    
-    // Try fetching with regular CORS mode
-    try {
-      const response = await fetch(encodedUrl, { 
-        mode: 'cors',
-        cache: 'force-cache' 
-      });
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.readAsDataURL(blob);
-        });
-      }
-      
-      throw new Error(`Failed to fetch image: ${response.status}`);
-    } catch (corsError) {
-      console.log('CORS fetch failed:', corsError);
-      // Fall back to using the original URL with error handler in the img tag
-      console.log('Using original URL with error handler');
-      return encodedUrl;
-    }
+    // Just return the URL directly without trying to fetch or convert
+    // This avoids CORS issues altogether
+    return url;
   } catch (error) {
-    console.error('Failed to fetch image:', error);
+    console.error('Error processing avatar URL:', error);
     // Return a reliable default avatar
     return 'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f464.png';
   }
@@ -236,23 +213,10 @@ async function generateHtmlContent(data) {
     avatarUrl = avatarUrl.replace(/^http:/, 'https:');
   }
   
-  // Try to convert avatar to base64 for embedding, but don't wait too long
+  // We'll use the original URL directly without any fetch attempts
+  // This prevents CORS issues since we're relying on the browser's own image loading
+  // which handles CORS differently than fetch
   let base64Avatar = avatarUrl;
-  try {
-    console.log('Converting avatar to base64:', avatarUrl);
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Fetch timeout')), 3000)
-    );
-    base64Avatar = await Promise.race([
-      fetchImageAsBase64(avatarUrl),
-      timeoutPromise
-    ]);
-    console.log('Successfully processed avatar URL');
-  } catch (error) {
-    console.error('Failed to convert avatar to base64:', error);
-    // Keep original URL if conversion fails
-    base64Avatar = avatarUrl;
-  }
   
   // For testing: log the avatar URL being used
   console.log('Using avatar URL:', 
@@ -794,109 +758,7 @@ async function generateHtmlContent(data) {
         <a href="${threadUrl}" target="_blank">View on Threads</a>
       </div>
       <div class="action-buttons">
-        <button onclick="(function() {
-          // Get all posts from the article
-          const article = document.querySelector('.article');
-          if (!article) return;
-          
-          // Get the text content
-          const text = article.innerHTML
-            // Convert <br> tags to newlines
-            .replace(/<br>/g, '\n')
-            // Add triple newlines between posts (which will be replaced with dividers)
-            .replace(/\n\n\n/g, '\n\n---\n\n')
-            // Remove any HTML tags
-            .replace(/<[^>]*>?/gm, '')
-            // Clean up any excessive newlines
-            .replace(/\n{3,}/g, '\n\n')
-            // Trim the result
-            .trim();
-          
-          // Try using clipboard API first
-          try {
-            // Create a fallback textarea for browsers that restrict clipboard API in data URLs
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = 0;
-            document.body.appendChild(textarea);
-            textarea.focus();
-            textarea.select();
-            
-            // Try execCommand as fallback (works in more contexts)
-            const successful = document.execCommand('copy');
-            if (successful) {
-              const msg = document.createElement('div');
-              msg.className = 'copy-success';
-              msg.textContent = 'Text copied!';
-              document.body.appendChild(msg);
-              setTimeout(() => msg.remove(), 2000);
-              document.body.removeChild(textarea);
-              return;
-            }
-            
-            // If execCommand failed, try clipboard API
-            navigator.clipboard.writeText(text).then(() => {
-              const msg = document.createElement('div');
-              msg.className = 'copy-success';
-              msg.textContent = 'Text copied!';
-              document.body.appendChild(msg);
-              setTimeout(() => msg.remove(), 2000);
-              document.body.removeChild(textarea);
-            }).catch(err => {
-              // Both methods failed, leave textarea for manual copy
-              textarea.style.position = 'fixed';
-              textarea.style.left = '50%';
-              textarea.style.top = '50%';
-              textarea.style.transform = 'translate(-50%, -50%)';
-              textarea.style.width = '80%';
-              textarea.style.height = '200px';
-              textarea.style.padding = '10px';
-              textarea.style.zIndex = '9999';
-              textarea.style.opacity = '1';
-              textarea.style.border = '2px solid #0095f6';
-              
-              const msg = document.createElement('div');
-              msg.className = 'copy-message';
-              msg.textContent = 'Select all text (Ctrl+A) and copy (Ctrl+C)';
-              msg.style.position = 'fixed';
-              msg.style.left = '50%';
-              msg.style.top = 'calc(50% - 110px)';
-              msg.style.transform = 'translateX(-50%)';
-              msg.style.backgroundColor = '#0095f6';
-              msg.style.color = 'white';
-              msg.style.padding = '10px';
-              msg.style.borderRadius = '4px';
-              msg.style.zIndex = '10000';
-              
-              const closeBtn = document.createElement('button');
-              closeBtn.textContent = 'Close';
-              closeBtn.style.position = 'fixed';
-              closeBtn.style.left = '50%';
-              closeBtn.style.top = 'calc(50% + 110px)';
-              closeBtn.style.transform = 'translateX(-50%)';
-              closeBtn.style.backgroundColor = '#0095f6';
-              closeBtn.style.color = 'white';
-              closeBtn.style.border = 'none';
-              closeBtn.style.padding = '10px 20px';
-              closeBtn.style.borderRadius = '4px';
-              closeBtn.style.cursor = 'pointer';
-              closeBtn.style.zIndex = '10000';
-              
-              closeBtn.onclick = function() {
-                document.body.removeChild(textarea);
-                document.body.removeChild(msg);
-                document.body.removeChild(closeBtn);
-              };
-              
-              document.body.appendChild(msg);
-              document.body.appendChild(closeBtn);
-            });
-          } catch (err) {
-            console.error('Failed to copy:', err);
-            alert('Failed to copy text. Please try again or use Save PDF instead.');
-          }
-        })()" class="action-button">Copy Text</button>
+        <button onclick="copyText()" class="action-button">Copy Text</button>
         <button onclick="window.print()" class="action-button">Save PDF</button>
       </div>
     </div>
@@ -948,6 +810,147 @@ async function generateHtmlContent(data) {
   <div class="footer">
     <p>Source: <a href="${threadUrl}" target="_blank">Threads</a></p>
   </div>
+
+  <script>
+    // Handle image loading
+    document.addEventListener('DOMContentLoaded', function() {
+      const avatarImg = document.querySelector('.author-image');
+      const initials = document.querySelector('.author-initials');
+      
+      // When image loads successfully
+      avatarImg.addEventListener('load', function() {
+        // Check if the image actually loaded with content
+        if (avatarImg.naturalWidth > 0 && avatarImg.naturalHeight > 0) {
+          initials.style.display = 'none'; // Hide initials
+        } else {
+          avatarImg.style.display = 'none'; // Hide broken image
+        }
+      });
+      
+      // When image fails to load
+      avatarImg.addEventListener('error', function() {
+        avatarImg.style.display = 'none'; // Hide broken image
+      });
+    });
+
+    // Function to copy text to clipboard
+    function copyText() {
+      try {
+        // Extract plain text from the article
+        const articleDiv = document.querySelector('.article');
+        if (!articleDiv) {
+          throw new Error('Article content not found');
+        }
+        
+        // Store original posts as they appear in the HTML
+        const originalHTML = articleDiv.innerHTML;
+        
+        // Create a temporary div to work with
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = originalHTML;
+        
+        // Convert all <br> tags to newlines
+        tempDiv.innerHTML = tempDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+        
+        // Find all triple newlines (post separators) and replace with divider
+        const plainText = tempDiv.textContent
+          .replace(/\n{3,}/g, '\n\n---\n\n')  // Replace triple+ newlines with divider
+          .replace(/\n{2,}/g, '\n\n')         // Normalize double+ newlines
+          .trim();
+        
+        // Create a temporary textarea element for copying
+        const textarea = document.createElement('textarea');
+        textarea.value = plainText;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        
+        // Select and copy
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        
+        if (!success) {
+          throw new Error('Failed to copy using execCommand');
+        }
+        
+        // Show success message
+        const msg = document.createElement('div');
+        msg.className = 'copy-success';
+        msg.textContent = 'Text copied!';
+        document.body.appendChild(msg);
+        setTimeout(() => msg.remove(), 2000);
+        
+      } catch (err) {
+        console.error('Copy failed:', err);
+        
+        // Provide manual copy option as fallback
+        const textarea = document.createElement('textarea');
+        const articleDiv = document.querySelector('.article');
+        
+        // Create a simpler fallback text version
+        let fallbackText = '';
+        if (articleDiv) {
+          // Replace breaks with newlines and strip HTML tags
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = articleDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+          fallbackText = tempDiv.textContent;
+        } else {
+          fallbackText = 'Could not extract text. Please try again.';
+        }
+        
+        textarea.value = fallbackText;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '50%';
+        textarea.style.top = '50%';
+        textarea.style.transform = 'translate(-50%, -50%)';
+        textarea.style.width = '80%';
+        textarea.style.height = '200px';
+        textarea.style.padding = '10px';
+        textarea.style.zIndex = '9999';
+        textarea.style.border = '2px solid #0095f6';
+        
+        const msg = document.createElement('div');
+        msg.textContent = 'Select all (Ctrl+A) and copy (Ctrl+C)';
+        msg.style.position = 'fixed';
+        msg.style.left = '50%';
+        msg.style.top = 'calc(50% - 110px)';
+        msg.style.transform = 'translateX(-50%)';
+        msg.style.backgroundColor = '#0095f6';
+        msg.style.color = 'white';
+        msg.style.padding = '10px';
+        msg.style.borderRadius = '4px';
+        msg.style.zIndex = '10000';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close';
+        closeBtn.style.position = 'fixed';
+        closeBtn.style.left = '50%';
+        closeBtn.style.top = 'calc(50% + 110px)';
+        closeBtn.style.transform = 'translateX(-50%)';
+        closeBtn.style.backgroundColor = '#0095f6';
+        closeBtn.style.color = 'white';
+        closeBtn.style.border = 'none';
+        closeBtn.style.padding = '10px 20px';
+        closeBtn.style.borderRadius = '4px';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.style.zIndex = '10000';
+        
+        closeBtn.onclick = function() {
+          document.body.removeChild(textarea);
+          document.body.removeChild(msg);
+          document.body.removeChild(closeBtn);
+        };
+        
+        document.body.appendChild(textarea);
+        document.body.appendChild(msg);
+        document.body.appendChild(closeBtn);
+        
+        textarea.focus();
+        textarea.select();
+      }
+    }
+  </script>
 </body>
 </html>`;
 
