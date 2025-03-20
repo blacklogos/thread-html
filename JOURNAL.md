@@ -1,15 +1,70 @@
-# Development Journal - Threads to HTML
+# Development Journal for Threads to HTML
 
-## Version 0.1 - March 2025
+## Version 0.2 (April 2024)
 
-This journal tracks the development progress, challenges, and future plans for the Threads to HTML Chrome extension.
+### Changes Implemented
 
-### Initial Development
+1. **Added utility buttons:**
+   - "Copy Text" button that extracts the content and copies to clipboard with posts separated by "---" dividers
+   - "Save PDF" button that uses the browser's print functionality to save content as PDF
 
-The first version of the extension focused on creating a minimal viable product that could:
-1. Extract thread content from Threads.net
-2. Clean up UI elements and metadata
-3. Generate a clean HTML file with the content
+2. **Fixed critical bugs:**
+   - Added "scripting" permission to manifest.json to fix content script injection issue
+   - Resolved "Cannot read properties of undefined (reading 'executeScript')" error 
+   - Fixed ReferenceError for copyText and savePDF functions in data URLs
+   - Implemented inline function execution in button onclick attributes to avoid dependency on external script functions
+
+3. **Improved text handling:**
+   - Better preservation of line breaks within posts
+   - More accurate handling of text extraction from HTML elements
+   - Enhanced text cleaning patterns
+
+4. **UI Improvements:**
+   - Added success notification when text is copied
+   - Implemented print media query to hide buttons when printing
+   - Improved styling for mobile devices
+
+### Known Issues
+
+- Avatar images sometimes fail to load or display correctly
+- Some rich media content (such as embedded videos) is not preserved
+- Clipboard API might behave differently across browsers
+
+### Next Steps
+
+1. **Fix avatar display issues:**
+   - Investigate why avatar images sometimes fail to load
+   - Implement better fallback mechanisms for missing avatars
+   - Consider caching images or using base64 encoding for reliability
+
+2. **Improve media handling:**
+   - Better support for videos and rich media content
+   - Consider thumbnail generation for videos
+   - Implement better media detection patterns
+
+3. **Enhance text formatting:**
+   - Preserve more of the original text formatting
+   - Support for bold, italic, and other rich text
+   - Better handling of emojis and special characters
+
+4. **Performance optimizations:**
+   - Reduce memory usage for large threads
+   - Improve processing speed for content extraction
+   - Better error handling and user feedback
+
+5. **User experience improvements:**
+   - Progress indicator during processing
+   - Options page for customization
+   - Dark mode support
+
+## Version 0.1 (March 2024)
+
+### Initial Implementation
+
+1. Basic extraction of thread content
+2. Cleaning patterns for removing UI elements
+3. Simple HTML generation with responsive design
+4. Support for Vietnamese and English UI elements
 
 ### Key Features Implemented
 

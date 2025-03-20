@@ -2,7 +2,7 @@
 
 A Chrome extension that converts Threads.net posts to clean HTML files, preserving content while removing UI elements and unnecessary metadata.
 
-**Version 0.1**
+**Version 0.2**
 
 ## Features
 
@@ -14,7 +14,10 @@ A Chrome extension that converts Threads.net posts to clean HTML files, preservi
 - Display author information with profile picture in a clean header
 - Support for Vietnamese and English UI elements
 - Easy customization of cleaning patterns without coding knowledge
-- Automatic cache busting to ensure fresh content
+- Copy text functionality to clipboard with posts separated by dividers
+- Save as PDF option using browser's print functionality
+- Responsive design that works well on mobile and desktop
+- Proper handling of YouTube links, images, and external URLs
 
 ## Installation
 
@@ -119,7 +122,16 @@ This extension doesn't require a build step. To test changes:
 
 ## Version History
 
-- **0.1** (Mar 2025)
+- **0.2** (April 2024)
+  - Added "Copy Text" and "Save PDF" buttons
+  - Fixed clipboard access in data URLs
+  - Fixed permission issues with content script injection
+  - Improved handling of text content and line breaks
+  - Better processing of images and links
+  - Enhanced UI elements with success notifications
+  - Fixed various bugs with script execution in data URLs
+  
+- **0.1** (March 2024)
   - Initial release
   - Support for text extraction and cleaning
   - Custom pattern system for removing UI elements

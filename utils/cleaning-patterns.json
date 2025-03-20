@@ -337,8 +337,8 @@
       "description": "Removes engagement metrics with numbers in Vietnamese"
     },
     {
-      "name": "Thread UI elements (Vietnamese)",
-      "pattern": "\\b(Thread trả lời|Xem hoạt động|Thread)\\b",
+      "name": "Thread UI elements (Vietnamese)", 
+      "pattern": "\\b(Thread trả lời|Xem hoạt động|Thread)\\b|\\nXem hoạt động",
       "flags": "g",
       "replacement": "",
       "description": "Removes Thread UI elements in Vietnamese"
@@ -475,6 +475,90 @@
       "flags": "gm",
       "replacement": "",
       "description": "Removes empty lines with HTML breaks"
+    },
+    {
+      "name": "Username with dots and underscores at start",
+      "pattern": "^@[a-zA-Z0-9._-]+\\s*(?:<br>|$)",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes username with dots and underscores at start of line"
+    },
+    {
+      "name": "Username with dots and underscores inline",
+      "pattern": "(?<!<div class=\"author-name\"|<div class=\"author-username\">)\\s@[a-zA-Z0-9._-]+\\s*(?=\\s|<br>|$)",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes username with dots and underscores within text, but not in author header"
+    },
+    {
+      "name": "Username without @ symbol",
+      "pattern": "(?:^|\\s)[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]\\s*(?:<br>|$)",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes username without @ symbol"
+    },
+    {
+      "name": "Username without @ symbol inline",
+      "pattern": "(?<!<div class=\"author-name\"|<div class=\"author-username\">)(?:^|\\s)[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]\\s*(?:<br>|$)",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes username without @ symbol, but not in author header"
+    },
+    {
+      "name": "Time with unit at start",
+      "pattern": "^\\d+\\s+giờ(?:<br>|$)",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes time with unit at start"
+    },
+    {
+      "name": "Time with unit after break",
+      "pattern": "<br>\\d+\\s+giờ(?:<br>|$)",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes time with unit after line break"
+    },
+    {
+      "name": "View activity exact format",
+      "pattern": "\\d+\\\\nXem hoạt động",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes number followed by view activity text"
+    },
+    {
+      "name": "View activity with breaks",
+      "pattern": "(?:<br>)?\\d+\\\\nXem hoạt động(?:<br>)?",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes view activity with optional HTML breaks"
+    },
+    {
+      "name": "Multiple breaks",
+      "pattern": "(?:<br>){2,}",
+      "flags": "g",
+      "replacement": "<br>",
+      "description": "Reduces multiple HTML breaks to single break"
+    },
+    {
+      "name": "Empty lines",
+      "pattern": "^\\s*<br>\\s*|\\s*<br>\\s*$",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes empty lines with HTML breaks"
+    },
+    {
+      "name": "View count with K format",
+      "pattern": "\\b\\d+[,.]\\d*K\\s*lượt\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes view count with K format (e.g., '3,2K lượt')"
+    },
+    {
+      "name": "View count with decimal K",
+      "pattern": "\\b\\d+[,.]\\d*K\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes K-format numbers (e.g., '3,2K')"
     }
   ]
 } 

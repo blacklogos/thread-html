@@ -129,21 +129,21 @@ function generateHtmlContent(data) {
       // Escape special characters in username for regex
       const escapedUsername = usernameWithoutAt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
-      // Add patterns to remove this specific author's handle
+      // Add patterns to remove this specific author's handle ONLY in the content
       patterns.push({ 
-        pattern: new RegExp(`^${escapedUsername}\\s*$`, 'gim'), 
+        pattern: new RegExp(`(?<!<div class="author-name"|<div class="author-username">)^${escapedUsername}\\s*$`, 'gim'), 
         replacement: '' 
       });
       patterns.push({ 
-        pattern: new RegExp(`^@${escapedUsername}\\s*$`, 'gim'), 
+        pattern: new RegExp(`(?<!<div class="author-name"|<div class="author-username">)^@${escapedUsername}\\s*$`, 'gim'), 
         replacement: '' 
       });
       patterns.push({ 
-        pattern: new RegExp(`\\s${escapedUsername}\\s`, 'g'), 
+        pattern: new RegExp(`(?<!<div class="author-name"|<div class="author-username">)\\s${escapedUsername}\\s`, 'g'), 
         replacement: ' ' 
       });
       patterns.push({ 
-        pattern: new RegExp(`\\s@${escapedUsername}\\s`, 'g'), 
+        pattern: new RegExp(`(?<!<div class="author-name"|<div class="author-username">)\\s@${escapedUsername}\\s`, 'g'), 
         replacement: ' ' 
       });
     }
@@ -157,62 +157,78 @@ function generateHtmlContent(data) {
     let cleanText = post.postText || 'No content available';
     let mediaContent = [];
     
-    // Extract all URLs before cleaning
+    // First, extract and store all URLs before any cleaning
     const urlMatches = cleanText.match(/(https?:\/\/[^\s]+)/gi) || [];
     
-    // Process each URL
+    // Process and categorize each URL
     urlMatches.forEach(url => {
-      // Check if it's a YouTube URL
-      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      // Clean the URL (remove any trailing punctuation or breaks)
+      const cleanUrl = url.replace(/[.,!?]$/, '').trim();
+      
+      // Categorize the URL
+      if (cleanUrl.match(/youtube\.com\/watch|youtu\.be\//i)) {
         mediaContent.push({
           type: 'youtube',
-          url: url
+          url: cleanUrl,
+          originalText: url
         });
-      }
-      // Check if it's an image URL
-      else if (url.match(/\.(jpg|jpeg|png|gif)$/i)) {
+      } else if (cleanUrl.match(/\.(jpg|jpeg|png|gif|webp)([?#].*)?$/i)) {
         mediaContent.push({
           type: 'image',
-          url: url
+          url: cleanUrl,
+          originalText: url
         });
-      } 
-      // Other links
-      else {
+      } else {
         mediaContent.push({
           type: 'link',
-          url: url
+          url: cleanUrl,
+          originalText: url
         });
       }
     });
+    
+    // Remove all URLs from the text temporarily
+    cleanText = cleanText.replace(/(https?:\/\/[^\s]+)/gi, '');
     
     // Get cleaning patterns including author-specific ones
     const patterns = createAuthorCleaningPatterns(authorUsername);
     
-    // Apply all patterns to clean the text
+    // Apply all cleaning patterns first
     patterns.forEach(({ pattern, replacement }) => {
       cleanText = cleanText.replace(pattern, replacement);
     });
     
-    // Remove URLs from the text since we'll add them back in a structured way
-    cleanText = cleanText.replace(/(https?:\/\/[^\s]+)/gi, '');
-    
-    // Add any final cleanup needed
-    cleanText = cleanText.trim();
+    // Clean up whitespace while preserving line breaks
+    cleanText = cleanText
+      .split('\n')                    // Split into lines
+      .map(line => line.trim())       // Trim each line
+      .filter(line => line.length > 0) // Remove empty lines
+      .join('\n');                    // Join back with original line breaks
     
     // Add back media content if exists
     if (mediaContent.length > 0) {
-      mediaContent.forEach(media => {
-        if (media.type === 'youtube') {
-          cleanText += `\n[YouTube: ${media.url}]`;
-        } else if (media.type === 'image') {
-          cleanText += `\n[Image: ${media.url}]`;
-        } else {
-          cleanText += `\n[Link: ${media.url}]`;
-        }
+      // Group by type
+      const youtubeLinks = mediaContent.filter(m => m.type === 'youtube');
+      const images = mediaContent.filter(m => m.type === 'image');
+      const otherLinks = mediaContent.filter(m => m.type === 'link');
+      
+      // Add YouTube links first
+      youtubeLinks.forEach(media => {
+        cleanText += '\n[YouTube: ' + media.url + ']';
+      });
+      
+      // Then images
+      images.forEach(media => {
+        cleanText += '\n[Image: ' + media.url + ']';
+      });
+      
+      // Finally other links
+      otherLinks.forEach(media => {
+        cleanText += '\n[Link: ' + media.url + ']';
       });
     }
     
-    return cleanText;
+    return cleanText.trim();
   });
   
   // Filter out empty posts
@@ -225,23 +241,18 @@ function generateHtmlContent(data) {
   // Use non-empty posts or default to original cleaned posts if all were filtered out
   const finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
   
-  // Join all cleaned posts with a line break
-  let threadContent = finalPosts.join('\n\n');
+  // Join all cleaned posts with double line breaks and convert to HTML breaks
+  let threadContent = finalPosts.join('\n\n\n')  // Three newlines between posts
+    .split('\n')                                 // Split all lines
+    .map(line => line.trim())                    // Trim each line
+    .filter(line => line.length > 0)             // Remove empty lines
+    .join('<br>')                                // Convert to HTML breaks
+    .replace(/<br>\s*<br>\s*<br>\s*<br>+/g, '<br><br><br>')  // Max triple breaks between posts
+    .trim();
   
-  // Convert newlines to <br> tags
-  threadContent = threadContent.replace(/\n/g, '<br>');
-  
-  // Apply HTML-specific cleaning patterns
-  cleaningPatterns.forEach(({ pattern, replacement }) => {
-    if (pattern.toString().includes('<br>')) {
-      threadContent = threadContent.replace(pattern, replacement);
-    }
-  });
-  
-  // Clean up multiple breaks and empty lines
+  // Final cleanup of any remaining excessive line breaks
   threadContent = threadContent
-    .replace(/(?:<br>){3,}/g, '<br><br>')  // Reduce multiple breaks to double
-    .replace(/^\\s*<br>|<br>\\s*$/g, '')   // Remove breaks at start/end
+    .replace(/^<br>|<br>$/g, '')                // Remove breaks at start/end
     .trim();
   
   // Count total words for read time calculation
@@ -269,6 +280,8 @@ function generateHtmlContent(data) {
       --border-color: #e9ecef;
       --muted-color: #6c757d;
       --link-color: #0095f6;
+      --button-bg: #0095f6;
+      --button-hover: #0056b3;
       --header-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
       --body-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     }
@@ -464,6 +477,51 @@ function generateHtmlContent(data) {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    
+    .action-buttons {
+      margin-top: 15px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .action-button {
+      padding: 6px 12px;
+      font-size: 0.9rem;
+      border: none;
+      border-radius: 4px;
+      background-color: var(--button-bg);
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .action-button:hover {
+      background-color: var(--button-hover);
+    }
+    
+    .copy-success {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background-color: #28a745;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      animation: fadeOut 2s forwards;
+    }
+    
+    @keyframes fadeOut {
+      0% { opacity: 1; }
+      70% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    
+    @media print {
+      .action-buttons {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -475,6 +533,47 @@ function generateHtmlContent(data) {
       <div class="thread-info">
         ${readTimeMinutes} min read • 
         <a href="${threadUrl}" target="_blank">View on Threads</a>
+      </div>
+      <div class="action-buttons">
+        <button onclick="(function() {
+          // Get all posts from the article
+          const article = document.querySelector('.article');
+          if (!article) return;
+          
+          // Get the text content
+          const text = Array.from(article.childNodes)
+            .map(node => {
+              if (node.nodeType === 3) return node.textContent; // Text node
+              if (node.tagName === 'BR') return '\\n';
+              if (node.tagName === 'IMG') return '[Image]';
+              if (node.tagName === 'A') {
+                if (node.classList.contains('youtube')) return '[YouTube Link]';
+                if (node.classList.contains('external')) return '[Link]';
+                return node.textContent;
+              }
+              return node.textContent;
+            })
+            .join('')
+            .split(/\\s*<br><br><br>\\s*/)
+            .map(post => post.trim())
+            .filter(post => post)
+            .join('\\n\\n---\\n\\n');
+          
+          // Copy to clipboard
+          try {
+            navigator.clipboard.writeText(text).then(() => {
+              const msg = document.createElement('div');
+              msg.className = 'copy-success';
+              msg.textContent = 'Text copied!';
+              document.body.appendChild(msg);
+              setTimeout(() => msg.remove(), 2000);
+            });
+          } catch (err) {
+            console.error('Failed to copy:', err);
+            alert('Failed to copy text. Please try again.');
+          }
+        })()" class="action-button">Copy Text</button>
+        <button onclick="window.print()" class="action-button">Save PDF</button>
       </div>
     </div>
   </div>
