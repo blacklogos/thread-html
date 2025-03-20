@@ -99,9 +99,9 @@ function generateHtmlContent(data) {
     avatarUrl = posts[0].mediaUrls[0];
   }
   
-  // Default avatar if none found
+  // Default avatar if none found - provide a reliable default from a CDN
   if (!avatarUrl) {
-    avatarUrl = 'https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png';
+    avatarUrl = 'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f464.png';
   }
   
   // Ensure authorUsername is clean and valid for file naming
@@ -478,6 +478,56 @@ function generateHtmlContent(data) {
       white-space: nowrap;
     }
     
+    .post-link .link-domain {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: var(--muted-color);
+      font-size: 0.9em;
+    }
+    
+    .youtube-container {
+      margin: 15px 0;
+    }
+    
+    .youtube-thumbnail {
+      position: relative;
+      display: block;
+      width: 100%;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    
+    .youtube-thumbnail img {
+      width: 100%;
+      display: block;
+      height: auto;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+    
+    .youtube-play-icon {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px;
+      height: 60px;
+      background-color: rgba(0, 0, 0, 0.7);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 24px;
+      pointer-events: none;
+    }
+    
+    .youtube-container:hover .youtube-thumbnail img {
+      transform: scale(1.05);
+    }
+    
     .action-buttons {
       margin-top: 15px;
       display: flex;
@@ -559,18 +609,89 @@ function generateHtmlContent(data) {
             .filter(post => post)
             .join('\\n\\n---\\n\\n');
           
-          // Copy to clipboard
+          // Try using clipboard API first
           try {
+            // Create a fallback textarea for browsers that restrict clipboard API in data URLs
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = 0;
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            
+            // Try execCommand as fallback (works in more contexts)
+            const successful = document.execCommand('copy');
+            if (successful) {
+              const msg = document.createElement('div');
+              msg.className = 'copy-success';
+              msg.textContent = 'Text copied!';
+              document.body.appendChild(msg);
+              setTimeout(() => msg.remove(), 2000);
+              document.body.removeChild(textarea);
+              return;
+            }
+            
+            // If execCommand failed, try clipboard API
             navigator.clipboard.writeText(text).then(() => {
               const msg = document.createElement('div');
               msg.className = 'copy-success';
               msg.textContent = 'Text copied!';
               document.body.appendChild(msg);
               setTimeout(() => msg.remove(), 2000);
+              document.body.removeChild(textarea);
+            }).catch(err => {
+              // Both methods failed, leave textarea for manual copy
+              textarea.style.position = 'fixed';
+              textarea.style.left = '50%';
+              textarea.style.top = '50%';
+              textarea.style.transform = 'translate(-50%, -50%)';
+              textarea.style.width = '80%';
+              textarea.style.height = '200px';
+              textarea.style.padding = '10px';
+              textarea.style.zIndex = '9999';
+              textarea.style.opacity = '1';
+              textarea.style.border = '2px solid #0095f6';
+              
+              const msg = document.createElement('div');
+              msg.className = 'copy-message';
+              msg.textContent = 'Select all text (Ctrl+A) and copy (Ctrl+C)';
+              msg.style.position = 'fixed';
+              msg.style.left = '50%';
+              msg.style.top = 'calc(50% - 110px)';
+              msg.style.transform = 'translateX(-50%)';
+              msg.style.backgroundColor = '#0095f6';
+              msg.style.color = 'white';
+              msg.style.padding = '10px';
+              msg.style.borderRadius = '4px';
+              msg.style.zIndex = '10000';
+              
+              const closeBtn = document.createElement('button');
+              closeBtn.textContent = 'Close';
+              closeBtn.style.position = 'fixed';
+              closeBtn.style.left = '50%';
+              closeBtn.style.top = 'calc(50% + 110px)';
+              closeBtn.style.transform = 'translateX(-50%)';
+              closeBtn.style.backgroundColor = '#0095f6';
+              closeBtn.style.color = 'white';
+              closeBtn.style.border = 'none';
+              closeBtn.style.padding = '10px 20px';
+              closeBtn.style.borderRadius = '4px';
+              closeBtn.style.cursor = 'pointer';
+              closeBtn.style.zIndex = '10000';
+              
+              closeBtn.onclick = function() {
+                document.body.removeChild(textarea);
+                document.body.removeChild(msg);
+                document.body.removeChild(closeBtn);
+              };
+              
+              document.body.appendChild(msg);
+              document.body.appendChild(closeBtn);
             });
           } catch (err) {
             console.error('Failed to copy:', err);
-            alert('Failed to copy text. Please try again.');
+            alert('Failed to copy text. Please try again or use Save PDF instead.');
           }
         })()" class="action-button">Copy Text</button>
         <button onclick="window.print()" class="action-button">Save PDF</button>
@@ -579,13 +700,45 @@ function generateHtmlContent(data) {
   </div>
   
   <div class="article">${threadContent
-    .replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy">')
+    .replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy" onerror="this.src=\'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f5bc.png\'; this.style.width=\'72px\'; this.style.height=\'72px\';">')
     .replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, (match, url) => {
-      const linkText = url.includes('youtu.be') ? 'Watch on YouTube' : url;
-      return `<a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">${linkText}</span></a>`;
+      // Extract video ID for YouTube embeds
+      let videoId = '';
+      if (url.includes('youtu.be/')) {
+        videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
+      } else if (url.includes('youtube.com/watch')) {
+        const urlObj = new URL(url);
+        videoId = urlObj.searchParams.get('v');
+      }
+      
+      if (videoId) {
+        // Return YouTube thumbnail with link as fallback
+        return `
+          <div class="youtube-container">
+            <a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer">
+              <div class="youtube-thumbnail">
+                <img src="https://img.youtube.com/vi/${videoId}/0.jpg" alt="YouTube Thumbnail" loading="lazy" 
+                     onerror="this.src='https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/25b6.png'; this.style.width='72px'; this.style.height='72px';">
+                <div class="youtube-play-icon">▶</div>
+              </div>
+              <span class="link-text">Watch on YouTube</span>
+            </a>
+          </div>`;
+      } else {
+        // Fallback to regular link
+        return `<a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ${url}</span></a>`;
+      }
     })
     .replace(/\[Link: (https?:\/\/[^\]]+)\]/g, (match, url) => {
-      return `<a href="${url}" class="post-link external" target="_blank" rel="noopener noreferrer"><span class="link-text">${url}</span></a>`;
+      try {
+        const hostname = new URL(url).hostname;
+        return `<a href="${url}" class="post-link external" target="_blank" rel="noopener noreferrer">
+                <span class="link-domain">${hostname}</span>
+                <span class="link-text">${url}</span>
+               </a>`;
+      } catch (e) {
+        return `<a href="${url}" class="post-link external" target="_blank" rel="noopener noreferrer"><span class="link-text">${url}</span></a>`;
+      }
     })
     .replace(/@(\w+)/g, '<a href="https://www.threads.net/@$1" target="_blank">@$1</a>')}</div>
   

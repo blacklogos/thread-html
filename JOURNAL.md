@@ -1,6 +1,6 @@
 # Development Journal for Threads to HTML
 
-## Version 0.2 (April 2024)
+## Version 0.2 (March 21, 2024)
 
 ### Changes Implemented
 
@@ -23,6 +23,40 @@
    - Added success notification when text is copied
    - Implemented print media query to hide buttons when printing
    - Improved styling for mobile devices
+
+### Current Issues (March 21, 2024)
+
+1. **Copy functionality still not working:**
+   - The copy button may fail due to clipboard API limitations in data URLs
+   - Some browsers restrict clipboard access from data URLs for security reasons
+   - Need to implement a fallback mechanism or alternative approach
+
+2. **Avatar display issues:**
+   - Author profile images often fail to load
+   - This may be due to CORS restrictions or direct image URL access issues
+   - Need to implement proper image loading or fallback placeholders
+
+3. **Link and media handling:**
+   - YouTube links don't render properly in the exported HTML
+   - External URLs may not be correctly preserved
+   - Media content (images, videos) needs better handling
+
+### Immediate Next Steps
+
+1. **Fix copy functionality:**
+   - Implement a more robust clipboard access method
+   - Add a fallback text area for manual copy when API fails
+   - Test across different browsers and contexts
+
+2. **Fix avatar display:**
+   - Investigate CORS issues with Threads images
+   - Implement base64 encoding for avatars when possible
+   - Add fallback avatar placeholders that work reliably
+
+3. **Improve link handling:**
+   - Fix YouTube link detection and rendering
+   - Enhance external URL preservation logic
+   - Better formatting for links in the exported HTML
 
 ### Known Issues
 
