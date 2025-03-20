@@ -1,27 +1,46 @@
 // Initialize the cleaning patterns
 let cleaningPatterns = [];
 
-// Load patterns from JSON file using fetch
-fetch('./utils/cleaning-patterns.json')
-  .then(response => response.json())
-  .then(data => {
-    // Convert string patterns from JSON to actual RegExp objects
-    cleaningPatterns = data.patterns.map(pattern => {
-      return {
-        name: pattern.name,
-        pattern: new RegExp(pattern.pattern, pattern.flags),
-        replacement: pattern.replacement,
-        description: pattern.description
-      };
+// Load patterns from JSON file using fetch with better error handling
+function loadPatternsFromJson() {
+  console.log('Attempting to load cleaning patterns from JSON...');
+  
+  fetch('./utils/cleaning-patterns.json')
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`Failed to load patterns: ${response.status} ${response.statusText}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (!data || !Array.isArray(data.patterns)) {
+        throw new Error('Invalid patterns format: expected array in "patterns" property');
+      }
+      
+      // Convert string patterns from JSON to actual RegExp objects
+      cleaningPatterns = data.patterns.map(pattern => {
+        try {
+          return {
+            name: pattern.name || 'Unnamed pattern',
+            pattern: new RegExp(pattern.pattern, pattern.flags || 'g'),
+            replacement: pattern.replacement || '',
+            description: pattern.description || ''
+          };
+        } catch (regexError) {
+          console.error(`Invalid regex pattern "${pattern.pattern}": ${regexError.message}`);
+          return null;
+        }
+      }).filter(Boolean); // Filter out any null patterns from regex errors
+      
+      console.log(`Loaded ${cleaningPatterns.length} cleaning patterns from cleaning-patterns.json`);
+      console.log('To modify patterns, edit utils/cleaning-patterns.json');
+    })
+    .catch(error => {
+      console.error('Error loading cleaning patterns:', error);
+      // Use default patterns as fallback
+      initializeDefaultPatterns();
     });
-    console.log(`Loaded ${cleaningPatterns.length} cleaning patterns from cleaning-patterns.json`);
-    console.log('To modify patterns, edit utils/cleaning-patterns.json');
-  })
-  .catch(error => {
-    console.error('Error loading cleaning patterns:', error);
-    // Use default patterns as fallback
-    initializeDefaultPatterns();
-  });
+}
 
 // Fallback function to initialize default patterns if JSON loading fails
 function initializeDefaultPatterns() {
@@ -45,6 +64,9 @@ function initializeDefaultPatterns() {
     { pattern: /\n{3,}/g, replacement: '\n\n', name: 'Multiple line breaks' }
   ];
 }
+
+// Load patterns immediately when script loads
+loadPatternsFromJson();
 
 // Track active preview tabs
 let previewTabs = {};

@@ -16,11 +16,18 @@ A Chrome extension that converts Threads.net posts to clean HTML files, preservi
 - Save as PDF option using browser's print functionality
 - Responsive design that works well on mobile and desktop
 
-## Known Issues (To Be Fixed)
-- Avatar images fail to display correctly
-- YouTube links and external URLs need improved handling
-- Copy text functionality has clipboard access limitations in some contexts
-- Some media content may not be preserved properly
+## Issues Fixed (March 21, 2024)
+- Avatar images now display with reliable fallbacks
+- YouTube links now show thumbnails with play button overlay
+- Copy text functionality works with multiple fallback methods
+- External links display with proper formatting
+- Image loading errors handled gracefully
+
+## Known Issues (Still Working On)
+- Some browser contexts may limit clipboard API access
+- Very long threads may have performance issues
+- Some rich media content from Threads may not display correctly
+- Browser extensions like ad blockers might interfere with some functionality
 
 ## Installation
 
