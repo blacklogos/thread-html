@@ -1,5 +1,37 @@
 # Development Journal for Threads to HTML
 
+## Version 0.3 (March 22, 2024)
+
+### Changes Implemented
+
+1. **Fixed Copy Text functionality:**
+   - Resolved issue with "---" dividers not appearing properly between posts
+   - Improved HTML-to-text conversion during copy operations
+   - Better handling of line breaks and content formatting
+
+2. **Enhanced Avatar Display:**
+   - Implemented initials-based fallback system for avatars
+   - Added custom color generation based on author name
+   - Created dual-layer approach with image and initials elements
+   - Improved error handling for avatar image loading
+
+3. **Better Error Handling:**
+   - Added more graceful fallbacks for failed operations
+   - Improved reliability across different browsers and contexts
+   - Enhanced user feedback for operation success/failure
+
+### Next Steps
+
+1. **Enhance media handling:**
+   - Improve support for Instagram reels and video content
+   - Better handling of image galleries and carousels
+   - Optimize image loading and display
+
+2. **Add user settings:**
+   - Create options for customizing exported HTML
+   - Allow users to choose between different templates
+   - Provide controls for which elements to include/exclude
+
 ## Version 0.2 (March 21, 2024)
 
 ### Changes Implemented
@@ -178,4 +210,4 @@ Some browser contexts may still limit clipboard access due to security restricti
 
 ---
 
-Last updated: March 20, 2025 
+Last updated: March 22, 2024 

@@ -800,23 +800,17 @@ async function generateHtmlContent(data) {
           if (!article) return;
           
           // Get the text content
-          const text = Array.from(article.childNodes)
-            .map(node => {
-              if (node.nodeType === 3) return node.textContent; // Text node
-              if (node.tagName === 'BR') return '\\n';
-              if (node.tagName === 'IMG') return '[Image]';
-              if (node.tagName === 'A') {
-                if (node.classList.contains('youtube')) return '[YouTube Link]';
-                if (node.classList.contains('external')) return '[Link]';
-                return node.textContent;
-              }
-              return node.textContent;
-            })
-            .join('')
-            .split(/\\s*<br><br><br>\\s*/)
-            .map(post => post.trim())
-            .filter(post => post)
-            .join('\\n\\n---\\n\\n');
+          const text = article.innerHTML
+            // Convert <br> tags to newlines
+            .replace(/<br>/g, '\n')
+            // Add triple newlines between posts (which will be replaced with dividers)
+            .replace(/\n\n\n/g, '\n\n---\n\n')
+            // Remove any HTML tags
+            .replace(/<[^>]*>?/gm, '')
+            // Clean up any excessive newlines
+            .replace(/\n{3,}/g, '\n\n')
+            // Trim the result
+            .trim();
           
           // Try using clipboard API first
           try {
