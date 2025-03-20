@@ -3,8 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const convertButton = document.getElementById('convert');
   const status = document.getElementById('status');
   
-  // Keep track of current preview tab
-  let currentPreviewTabId = null;
+  // Keep track of current preview panel
+  let currentPreviewPanelId = null;
   
   // Function to inject content script
   async function injectContentScript(tabId) {
@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return response.data;
   }
   
-  // Function to generate HTML preview
+  // Function to generate HTML preview in side panel
   async function generatePreview() {
     try {
       previewButton.disabled = true;
@@ -95,8 +95,10 @@ document.addEventListener('DOMContentLoaded', () => {
       
       status.textContent = 'Generating preview...';
       
+      // Send message to create side panel preview
       const previewResponse = await chrome.runtime.sendMessage({
-        action: 'preview',
+        action: 'previewInSidePanel',
+        tabId: tab.id,
         data: threadData
       });
       
@@ -106,8 +108,8 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(previewResponse.error || 'Failed to generate preview');
       }
       
-      currentPreviewTabId = previewResponse.previewTabId;
-      status.textContent = 'Preview opened in new tab';
+      currentPreviewPanelId = previewResponse.panelId;
+      status.textContent = 'Preview opened in side panel';
       
       // Re-enable buttons
       previewButton.disabled = false;
@@ -128,13 +130,13 @@ document.addEventListener('DOMContentLoaded', () => {
       previewButton.disabled = true;
       convertButton.disabled = true;
       
-      // Check if we have an active preview to download from
-      if (currentPreviewTabId) {
+      // If we have an active preview, download from that
+      if (currentPreviewPanelId) {
         status.textContent = 'Downloading from preview...';
         
         const downloadResponse = await chrome.runtime.sendMessage({
-          action: 'downloadFromPreview',
-          previewTabId: currentPreviewTabId
+          action: 'downloadFromSidePanel',
+          panelId: currentPreviewPanelId
         });
         
         console.log('Download response:', downloadResponse);

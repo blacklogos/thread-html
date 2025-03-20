@@ -293,6 +293,41 @@
       "flags": "gm",
       "replacement": "",
       "description": "Removes leading/trailing whitespace on each line"
+    },
+    {
+      "name": "Small numbers at beginning",
+      "pattern": "^(\\d{1,2})\\n(\\d{1,2})\\n(\\d{1,2})\\n",
+      "flags": "m",
+      "replacement": "",
+      "description": "Removes sequences of small numbers at beginning of text"
+    },
+    {
+      "name": "View count with number",
+      "pattern": "\\n\\d+ lượt xem$",
+      "flags": "m",
+      "replacement": "",
+      "description": "Removes view count with number at end of text"
+    },
+    {
+      "name": "Metrics at end of post",
+      "pattern": "\\n\\d+\\n\\d+\\n\\d+$",
+      "flags": "m",
+      "replacement": "",
+      "description": "Removes metrics at the end of a post"
+    },
+    {
+      "name": "Engagement buttons",
+      "pattern": "\\n(Thích|Like)\\n(Bình luận|Comment)\\n(Chia sẻ|Share)(\\n|$)",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes engagement button text in both English and Vietnamese"
+    },
+    {
+      "name": "Reaction counts",
+      "pattern": "\\n\\d+ (người|people|others)",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes reaction counts in both English and Vietnamese"
     }
   ]
 } 
