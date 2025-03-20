@@ -739,12 +739,12 @@ async function generateHtmlContent(data) {
         tempDiv.innerHTML = originalHTML;
         
         // Convert all <br> tags to newlines
-        tempDiv.innerHTML = tempDiv.innerHTML.replace(/<br\\s*\\/?>/gi, '\\n');
+        tempDiv.innerHTML = tempDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
         
         // Find all triple newlines (post separators) and replace with divider
         const plainText = tempDiv.textContent
-          .replace(/\\n{3,}/g, '\\n\\n---\\n\\n')  // Replace triple+ newlines with divider
-          .replace(/\\n{2,}/g, '\\n\\n')         // Normalize double+ newlines
+          .replace(/\n{3,}/g, '\n\n---\n\n')  // Replace triple+ newlines with divider
+          .replace(/\n{2,}/g, '\n\n')         // Normalize double+ newlines
           .trim();
         
         // Create a temporary textarea element for copying
@@ -782,7 +782,7 @@ async function generateHtmlContent(data) {
         if (articleDiv) {
           // Replace breaks with newlines and strip HTML tags
           const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = articleDiv.innerHTML.replace(/<br\\s*\\/?>/gi, '\\n');
+          tempDiv.innerHTML = articleDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
           fallbackText = tempDiv.textContent;
         } else {
           fallbackText = 'Could not extract text. Please try again.';
