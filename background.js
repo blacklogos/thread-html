@@ -127,6 +127,49 @@ async function fetchImageAsBase64(url) {
   }
 }
 
+// Function to generate a simple avatar color from a name
+function getAvatarColor(name) {
+  // Default hue for unknown names
+  let hue = 210; 
+  
+  if (name && typeof name === 'string') {
+    // Generate a deterministic hue based on the name
+    hue = 0;
+    for (let i = 0; i < name.length; i++) {
+      hue += name.charCodeAt(i);
+    }
+    hue = hue % 360; // Limit to valid hue value
+  }
+  
+  return `hsl(${hue}, 70%, 60%)`;
+}
+
+// Function to extract initials from a name
+function getInitials(name) {
+  if (!name || typeof name !== 'string') {
+    return 'U';
+  }
+  
+  // Clean the name and extract words
+  const cleanName = name.replace(/[^\p{L}\p{N}\s]/gu, '').trim();
+  const nameParts = cleanName.split(/\s+/);
+  
+  if (nameParts.length >= 2) {
+    // Get first letter of first and last word
+    return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase();
+  } else if (nameParts.length === 1 && nameParts[0].length > 0) {
+    // Get first letter for single word
+    let initials = nameParts[0].charAt(0).toUpperCase();
+    // Add second letter if available
+    if (nameParts[0].length > 1) {
+      initials += nameParts[0].charAt(1).toUpperCase();
+    }
+    return initials;
+  }
+  
+  return 'U'; // Default for unknown
+}
+
 // Function to generate HTML content from thread data
 async function generateHtmlContent(data) {
   const { posts, author, url: threadUrl } = data;
@@ -177,8 +220,13 @@ async function generateHtmlContent(data) {
     avatarUrl = posts[0].mediaUrls[0];
   }
   
-  // Default avatar if none found - provide a reliable default from a CDN
+  // Get avatar color and initials for fallback
+  const avatarColor = getAvatarColor(authorName);
+  const authorInitials = getInitials(authorName);
+  
+  // Default avatar if none found - use the provided URL
   if (!avatarUrl) {
+    console.log('No avatar URL found, will use initials fallback');
     avatarUrl = 'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f464.png';
   }
   
@@ -202,7 +250,7 @@ async function generateHtmlContent(data) {
     console.log('Successfully processed avatar URL');
   } catch (error) {
     console.error('Failed to convert avatar to base64:', error);
-    // Keep the original URL if conversion fails
+    // Keep original URL if conversion fails
     base64Avatar = avatarUrl;
   }
   
@@ -435,26 +483,33 @@ async function generateHtmlContent(data) {
       height: 60px;
       border-radius: 50%;
       overflow: hidden;
-      background-color: #f0f0f0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .author-image-container::before {
-      content: "👤";
-      font-size: 40px;
-      line-height: 1;
+      margin-right: 20px;
+      background-color: ${avatarColor};
     }
     
     .author-image {
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      margin-right: 20px;
+      width: 100%;
+      height: 100%;
       object-fit: cover;
-      display: block; /* Ensure it's not hidden */
-      background-color: #f0f0f0; /* Light background while loading */
+      display: block;
+      position: relative;
+      z-index: 2;
+    }
+    
+    .author-initials {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 24px;
+      text-transform: uppercase;
+      z-index: 1;
     }
     
     .author-info {
@@ -702,12 +757,34 @@ async function generateHtmlContent(data) {
       }
     }
   </style>
+  <script>
+    // Handle image loading
+    document.addEventListener('DOMContentLoaded', function() {
+      const avatarImg = document.querySelector('.author-image');
+      const initials = document.querySelector('.author-initials');
+      
+      // When image loads successfully
+      avatarImg.addEventListener('load', function() {
+        // Check if the image actually loaded with content
+        if (avatarImg.naturalWidth > 0 && avatarImg.naturalHeight > 0) {
+          initials.style.display = 'none'; // Hide initials
+        } else {
+          avatarImg.style.display = 'none'; // Hide broken image
+        }
+      });
+      
+      // When image fails to load
+      avatarImg.addEventListener('error', function() {
+        avatarImg.style.display = 'none'; // Hide broken image
+      });
+    });
+  </script>
 </head>
 <body>
   <div class="author-header">
     <div class="author-image-container">
-      <img src="${base64Avatar}" alt="${authorName}" class="author-image" 
-           onerror="this.onerror=null; this.src='https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f464.png'; this.style.width='60px'; this.style.height='60px';">
+      <div class="author-initials">${authorInitials}</div>
+      <img src="${base64Avatar}" alt="${authorName}" class="author-image">
     </div>
     <div class="author-info">
       <div class="author-name">${authorName}</div>
