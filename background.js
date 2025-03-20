@@ -831,125 +831,125 @@ async function generateHtmlContent(data) {
       avatarImg.addEventListener('error', function() {
         avatarImg.style.display = 'none'; // Hide broken image
       });
-    });
 
-    // Function to copy text to clipboard
-    function copyText() {
-      try {
-        // Extract plain text from the article
-        const articleDiv = document.querySelector('.article');
-        if (!articleDiv) {
-          throw new Error('Article content not found');
-        }
-        
-        // Store original posts as they appear in the HTML
-        const originalHTML = articleDiv.innerHTML;
-        
-        // Create a temporary div to work with
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = originalHTML;
-        
-        // Convert all <br> tags to newlines
-        tempDiv.innerHTML = tempDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
-        
-        // Find all triple newlines (post separators) and replace with divider
-        const plainText = tempDiv.textContent
-          .replace(/\n{3,}/g, '\n\n---\n\n')  // Replace triple+ newlines with divider
-          .replace(/\n{2,}/g, '\n\n')         // Normalize double+ newlines
-          .trim();
-        
-        // Create a temporary textarea element for copying
-        const textarea = document.createElement('textarea');
-        textarea.value = plainText;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        
-        // Select and copy
-        textarea.select();
-        const success = document.execCommand('copy');
-        document.body.removeChild(textarea);
-        
-        if (!success) {
-          throw new Error('Failed to copy using execCommand');
-        }
-        
-        // Show success message
-        const msg = document.createElement('div');
-        msg.className = 'copy-success';
-        msg.textContent = 'Text copied!';
-        document.body.appendChild(msg);
-        setTimeout(() => msg.remove(), 2000);
-        
-      } catch (err) {
-        console.error('Copy failed:', err);
-        
-        // Provide manual copy option as fallback
-        const textarea = document.createElement('textarea');
-        const articleDiv = document.querySelector('.article');
-        
-        // Create a simpler fallback text version
-        let fallbackText = '';
-        if (articleDiv) {
-          // Replace breaks with newlines and strip HTML tags
+      // Make copyText function available globally by attaching to window
+      window.copyText = function() {
+        try {
+          // Extract plain text from the article
+          const articleDiv = document.querySelector('.article');
+          if (!articleDiv) {
+            throw new Error('Article content not found');
+          }
+          
+          // Store original posts as they appear in the HTML
+          const originalHTML = articleDiv.innerHTML;
+          
+          // Create a temporary div to work with
           const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = articleDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
-          fallbackText = tempDiv.textContent;
-        } else {
-          fallbackText = 'Could not extract text. Please try again.';
-        }
-        
-        textarea.value = fallbackText;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '50%';
-        textarea.style.top = '50%';
-        textarea.style.transform = 'translate(-50%, -50%)';
-        textarea.style.width = '80%';
-        textarea.style.height = '200px';
-        textarea.style.padding = '10px';
-        textarea.style.zIndex = '9999';
-        textarea.style.border = '2px solid #0095f6';
-        
-        const msg = document.createElement('div');
-        msg.textContent = 'Select all (Ctrl+A) and copy (Ctrl+C)';
-        msg.style.position = 'fixed';
-        msg.style.left = '50%';
-        msg.style.top = 'calc(50% - 110px)';
-        msg.style.transform = 'translateX(-50%)';
-        msg.style.backgroundColor = '#0095f6';
-        msg.style.color = 'white';
-        msg.style.padding = '10px';
-        msg.style.borderRadius = '4px';
-        msg.style.zIndex = '10000';
-        
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = 'Close';
-        closeBtn.style.position = 'fixed';
-        closeBtn.style.left = '50%';
-        closeBtn.style.top = 'calc(50% + 110px)';
-        closeBtn.style.transform = 'translateX(-50%)';
-        closeBtn.style.backgroundColor = '#0095f6';
-        closeBtn.style.color = 'white';
-        closeBtn.style.border = 'none';
-        closeBtn.style.padding = '10px 20px';
-        closeBtn.style.borderRadius = '4px';
-        closeBtn.style.cursor = 'pointer';
-        closeBtn.style.zIndex = '10000';
-        
-        closeBtn.onclick = function() {
+          tempDiv.innerHTML = originalHTML;
+          
+          // Convert all <br> tags to newlines
+          tempDiv.innerHTML = tempDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+          
+          // Find all triple newlines (post separators) and replace with divider
+          const plainText = tempDiv.textContent
+            .replace(/\n{3,}/g, '\n\n---\n\n')  // Replace triple+ newlines with divider
+            .replace(/\n{2,}/g, '\n\n')         // Normalize double+ newlines
+            .trim();
+          
+          // Create a temporary textarea element for copying
+          const textarea = document.createElement('textarea');
+          textarea.value = plainText;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-9999px';
+          document.body.appendChild(textarea);
+          
+          // Select and copy
+          textarea.select();
+          const success = document.execCommand('copy');
           document.body.removeChild(textarea);
-          document.body.removeChild(msg);
-          document.body.removeChild(closeBtn);
-        };
-        
-        document.body.appendChild(textarea);
-        document.body.appendChild(msg);
-        document.body.appendChild(closeBtn);
-        
-        textarea.focus();
-        textarea.select();
-      }
-    }
+          
+          if (!success) {
+            throw new Error('Failed to copy using execCommand');
+          }
+          
+          // Show success message
+          const msg = document.createElement('div');
+          msg.className = 'copy-success';
+          msg.textContent = 'Text copied!';
+          document.body.appendChild(msg);
+          setTimeout(() => msg.remove(), 2000);
+          
+        } catch (err) {
+          console.error('Copy failed:', err);
+          
+          // Provide manual copy option as fallback
+          const textarea = document.createElement('textarea');
+          const articleDiv = document.querySelector('.article');
+          
+          // Create a simpler fallback text version
+          let fallbackText = '';
+          if (articleDiv) {
+            // Replace breaks with newlines and strip HTML tags
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = articleDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+            fallbackText = tempDiv.textContent;
+          } else {
+            fallbackText = 'Could not extract text. Please try again.';
+          }
+          
+          textarea.value = fallbackText;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '50%';
+          textarea.style.top = '50%';
+          textarea.style.transform = 'translate(-50%, -50%)';
+          textarea.style.width = '80%';
+          textarea.style.height = '200px';
+          textarea.style.padding = '10px';
+          textarea.style.zIndex = '9999';
+          textarea.style.border = '2px solid #0095f6';
+          
+          const msg = document.createElement('div');
+          msg.textContent = 'Select all (Ctrl+A) and copy (Ctrl+C)';
+          msg.style.position = 'fixed';
+          msg.style.left = '50%';
+          msg.style.top = 'calc(50% - 110px)';
+          msg.style.transform = 'translateX(-50%)';
+          msg.style.backgroundColor = '#0095f6';
+          msg.style.color = 'white';
+          msg.style.padding = '10px';
+          msg.style.borderRadius = '4px';
+          msg.style.zIndex = '10000';
+          
+          const closeBtn = document.createElement('button');
+          closeBtn.textContent = 'Close';
+          closeBtn.style.position = 'fixed';
+          closeBtn.style.left = '50%';
+          closeBtn.style.top = 'calc(50% + 110px)';
+          closeBtn.style.transform = 'translateX(-50%)';
+          closeBtn.style.backgroundColor = '#0095f6';
+          closeBtn.style.color = 'white';
+          closeBtn.style.border = 'none';
+          closeBtn.style.padding = '10px 20px';
+          closeBtn.style.borderRadius = '4px';
+          closeBtn.style.cursor = 'pointer';
+          closeBtn.style.zIndex = '10000';
+          
+          closeBtn.onclick = function() {
+            document.body.removeChild(textarea);
+            document.body.removeChild(msg);
+            document.body.removeChild(closeBtn);
+          };
+          
+          document.body.appendChild(textarea);
+          document.body.appendChild(msg);
+          document.body.appendChild(closeBtn);
+          
+          textarea.focus();
+          textarea.select();
+        }
+      };
+    });
   </script>
 </body>
 </html>`;
