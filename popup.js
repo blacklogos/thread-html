@@ -109,7 +109,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       currentPreviewPanelId = previewResponse.panelId;
-      status.textContent = 'Preview opened in side panel';
+      
+      // Show appropriate message based on preview type
+      if (previewResponse.type === 'sidePanel') {
+        status.textContent = 'Preview opened in side panel';
+      } else if (previewResponse.type === 'tab') {
+        status.textContent = 'Preview opened in new tab (side panel unavailable)';
+      } else {
+        status.textContent = previewResponse.message || 'Preview opened';
+      }
       
       // Re-enable buttons
       previewButton.disabled = false;

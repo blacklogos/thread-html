@@ -122,6 +122,30 @@
       font-size: 0.9rem;
       text-align: center;
     }
+    
+    /* Tab mode styling (when opened in a tab instead of side panel) */
+    body.tab-mode {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 30px;
+    }
+    
+    body.tab-mode .post-image {
+      max-width: 100%;
+    }
+    
+    body.tab-mode #preview-container {
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    @media print {
+      .actions, .status {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>

@@ -2,12 +2,13 @@
   "manifest_version": 3,
   "name": "Threads to HTML",
   "version": "1.0",
-  "description": "Convert Threads posts to HTML files",
+  "description": "Convert Threads posts to HTML files with preview capability",
   "permissions": [
     "activeTab",
     "scripting",
     "downloads",
-    "sidePanel"
+    "sidePanel",
+    "tabs"
   ],
   "host_permissions": [
     "*://*.threads.net/*"
@@ -31,7 +32,7 @@
   "web_accessible_resources": [
     {
       "resources": ["panel.html", "panel.js"],
-      "matches": ["*://*.threads.net/*"]
+      "matches": ["*://*.threads.net/*", "https://*/*", "data:*"]
     }
   ]
 } 

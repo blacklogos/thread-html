@@ -348,41 +348,85 @@ function generateHtmlContent(data) {
 
 // Function to open a side panel with HTML content
 async function openSidePanel(tabId, htmlContent, data) {
-  console.log('Opening side panel for tab:', tabId);
+  console.log('Attempting to open side panel for tab:', tabId);
   
   // Create a unique ID for this panel
   const panelId = `panel_${Date.now()}`;
   
   try {
-    // Check if the side panel API is available
-    if (chrome.sidePanel) {
-      // Set the panel content
-      await chrome.sidePanel.setOptions({
-        tabId: tabId,
-        path: 'panel.html',
-        enabled: true
-      });
+    // Check if the side panel API is available and properly implemented
+    if (chrome.sidePanel && typeof chrome.sidePanel.setOptions === 'function' && typeof chrome.sidePanel.open === 'function') {
+      console.log('Side panel API is available, attempting to use it');
       
-      // Store the panel data for later use
-      previewPanels[panelId] = {
-        tabId: tabId,
-        htmlContent: htmlContent,
-        filename: `thread_${data.sanitizedAuthorUsername}_${data.timestamp}.html`,
-        originalData: data,
-        timestamp: Date.now()
-      };
-      
-      // Open the side panel
-      await chrome.sidePanel.open({ tabId });
-      
-      // Return the panel ID
-      return panelId;
+      try {
+        // Set the panel content
+        await chrome.sidePanel.setOptions({
+          tabId: tabId,
+          path: 'panel.html',
+          enabled: true
+        });
+        
+        // Store the panel data for later use
+        previewPanels[panelId] = {
+          tabId: tabId,
+          htmlContent: htmlContent,
+          filename: `thread_${data.sanitizedAuthorUsername}_${data.timestamp}.html`,
+          originalData: data,
+          timestamp: Date.now(),
+          type: 'sidePanel'
+        };
+        
+        // Open the side panel
+        await chrome.sidePanel.open({ tabId });
+        
+        console.log('Side panel opened successfully');
+        
+        // Return the panel ID
+        return panelId;
+      } catch (sidePanelError) {
+        console.error('Failed to open side panel despite API being available:', sidePanelError);
+        // Fall through to fallback mechanism
+        throw new Error(`Side panel API failed: ${sidePanelError.message}`);
+      }
     } else {
+      console.log('Side panel API not available, falling back to tab preview');
+      // Fall through to fallback mechanism
       throw new Error('Side panel API not available');
     }
   } catch (error) {
-    console.error('Failed to open side panel:', error);
-    throw error;
+    console.warn('Using fallback preview method (new tab):', error.message);
+    
+    // Fallback: Use a new tab preview instead
+    return new Promise((resolve, reject) => {
+      try {
+        // Create a data URL for the preview
+        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+        
+        // Create a new tab with the preview
+        chrome.tabs.create({ url: dataUrl, active: true }, (tab) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(`Failed to create preview tab: ${chrome.runtime.lastError.message}`));
+            return;
+          }
+          
+          // Store reference to this tab for download functionality
+          const fallbackPanelId = `tab_${tab.id}_${Date.now()}`;
+          previewPanels[fallbackPanelId] = {
+            tabId: tab.id,
+            htmlContent: htmlContent,
+            filename: `thread_${data.sanitizedAuthorUsername}_${data.timestamp}.html`,
+            originalData: data,
+            timestamp: Date.now(),
+            type: 'tab'
+          };
+          
+          console.log('Created fallback preview tab with ID:', tab.id);
+          resolve(fallbackPanelId);
+        });
+      } catch (fallbackError) {
+        reject(new Error(`Fallback preview failed: ${fallbackError.message}`));
+      }
+    });
   }
 }
 
@@ -412,14 +456,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       
       if (!panelData) {
-        throw new Error('No panel data found for tab');
+        // For the tab preview case, the data might be stored with the tab's ID directly
+        if (previewPanels[tabId]) {
+          panelData = previewPanels[tabId];
+          panelId = tabId;
+        } else {
+          throw new Error('No panel data found for tab');
+        }
       }
       
       // Send the panel content
       sendResponse({
         success: true,
         panelId: panelId,
-        htmlContent: panelData.htmlContent
+        htmlContent: panelData.htmlContent,
+        type: panelData.type || 'unknown'
       });
       
       return false;
@@ -442,9 +493,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         throw new Error('No tab ID found for panel close request');
       }
       
-      // Close the side panel
-      if (chrome.sidePanel && chrome.sidePanel.close) {
-        chrome.sidePanel.close({ tabId });
+      // Find the panel data
+      let panelData = null;
+      let panelId = null;
+      
+      Object.keys(previewPanels).forEach(id => {
+        if (previewPanels[id].tabId === tabId) {
+          panelData = previewPanels[id];
+          panelId = id;
+        }
+      });
+      
+      if (panelData) {
+        // Check the type of preview
+        if (panelData.type === 'sidePanel') {
+          // Close the side panel if the API is available
+          if (chrome.sidePanel && chrome.sidePanel.close) {
+            chrome.sidePanel.close({ tabId });
+          }
+        } else if (panelData.type === 'tab') {
+          // Close the tab if it's a tab preview
+          chrome.tabs.remove(tabId);
+        }
+        
+        // Cleanup
+        delete previewPanels[panelId];
       }
       
       sendResponse({ success: true });
@@ -459,10 +532,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
 
-  // Handle preview in side panel
+  // Handle preview request (tries side panel first, falls back to tab)
   if (request.action === 'previewInSidePanel') {
     try {
-      console.log('Background script received side panel preview request:', request);
+      console.log('Background script received preview request:', request);
       
       if (!request.data) {
         throw new Error('No data provided for preview');
@@ -471,18 +544,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // Generate HTML content
       const htmlResult = generateHtmlContent(request.data);
       
-      // Open side panel with the content
+      // Attempt to open side panel with the content (with fallback)
       openSidePanel(request.tabId, htmlResult.htmlContent, htmlResult)
         .then(panelId => {
+          // Get panel type to inform popup
+          const panelType = previewPanels[panelId]?.type || 'unknown';
+          const message = panelType === 'sidePanel' 
+            ? 'Preview opened in side panel' 
+            : 'Preview opened in new tab';
+          
           // Send a message to the popup that preview is ready
           sendResponse({
             success: true,
             panelId: panelId,
-            message: 'Preview opened in side panel'
+            type: panelType,
+            message: message
           });
         })
         .catch(error => {
-          console.error('Side panel error:', error);
+          console.error('Preview creation error:', error);
           sendResponse({
             success: false,
             error: error.message
@@ -500,15 +580,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
   
-  // Handle download from side panel
+  // Handle download from side panel or tab preview
   if (request.action === 'downloadFromSidePanel') {
     try {
-      console.log('Background script received download from side panel request:', request);
+      console.log('Background script received download request:', request);
       
       const panelId = request.panelId;
       
       if (!panelId || !previewPanels[panelId]) {
-        throw new Error('Invalid panel ID or panel not found');
+        throw new Error('Invalid panel ID or preview not found');
       }
       
       const panelData = previewPanels[panelId];
@@ -516,7 +596,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // Create data URL for the download
       const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(panelData.htmlContent);
       
-      console.log('Starting download from side panel with filename:', panelData.filename);
+      console.log('Starting download with filename:', panelData.filename);
       
       chrome.downloads.download({
         url: dataUrl,
@@ -546,7 +626,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // Return true to indicate we'll send a response asynchronously
       return true;
     } catch (error) {
-      console.error('Download from side panel error:', error);
+      console.error('Download error:', error);
       sendResponse({ 
         success: false, 
         error: error.message,
