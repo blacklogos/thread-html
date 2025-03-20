@@ -1,0 +1,38 @@
+# System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+._*
+
+# Node
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+*.log
+
+# Generated files
+*.zip
+*.crx
+*.pem
+dist/
+
+# IDE/Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# Build output
+build/
+out/
+
+# Sample output files
+thread_*.html
+
+# Temporary files
+temp/
+tmp/ 

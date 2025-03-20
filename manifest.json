@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Threads to HTML",
+  "version": "1.0",
+  "description": "Convert Threads posts to HTML files",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "*://*.threads.net/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.threads.net/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+} 

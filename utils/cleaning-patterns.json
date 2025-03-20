@@ -1,0 +1,242 @@
+{
+  "patterns": [
+    {
+      "name": "Username/handle at start of post",
+      "pattern": "^(@[a-zA-Z0-9_.-]+|[a-zA-Z0-9_]+)\\n",
+      "flags": "m",
+      "replacement": "",
+      "description": "Removes username handle at the beginning of a post"
+    },
+    {
+      "name": "Username with date",
+      "pattern": "@[a-zA-Z0-9_.-]+\\n\\d{1,2}\\/\\d{1,2}\\/\\d{4}",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes handle with date pattern"
+    },
+    {
+      "name": "Date (MM/DD/YYYY)",
+      "pattern": "\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\n",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes date in MM/DD/YYYY format"
+    },
+    {
+      "name": "Date with dots or dashes",
+      "pattern": "\\d{1,2}[\\.-]\\d{1,2}[\\.-]\\d{2,4}\\n",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes dates with dots or dashes"
+    },
+    {
+      "name": "Relative time (English)",
+      "pattern": "\\n\\d+ (days?|hours?|minutes?|seconds?) ago\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes relative time in English (e.g., '5 days ago')"
+    },
+    {
+      "name": "Relative time (Vietnamese)",
+      "pattern": "\\n\\d+ (ngày|giờ|phút|giây)( trước)?\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes relative time in Vietnamese (e.g., '5 ngày trước')"
+    },
+    {
+      "name": "Day reference",
+      "pattern": "^(today|yesterday|hôm nay|hôm qua)\\n",
+      "flags": "gi",
+      "replacement": "",
+      "description": "Removes day references like 'today' or 'yesterday'"
+    },
+    {
+      "name": "Time units (Vietnamese)",
+      "pattern": "\\b\\d+ (ngày|tuần|tháng)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes Vietnamese time units with numbers"
+    },
+    {
+      "name": "Day count (Vietnamese)",
+      "pattern": "\\n\\d+ ngày\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes day count in Vietnamese"
+    },
+    {
+      "name": "Multiple metrics",
+      "pattern": "\\n\\d+\\n\\d+\\n\\d+(\\n\\d+)?$",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes multiple sequential numbers at end (likes, comments, etc.)"
+    },
+    {
+      "name": "Single number at end",
+      "pattern": "\\n\\d+$",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes single number at end of text"
+    },
+    {
+      "name": "Engagement metrics (English)",
+      "pattern": "\\n\\d+ (likes?|replies?|reposts?|comments?)(\\n|$)",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes engagement metrics in English"
+    },
+    {
+      "name": "Engagement metrics (Vietnamese)",
+      "pattern": "\\n\\d+ (lượt thích|bình luận|trả lời|chia sẻ)(\\n|$)",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes engagement metrics in Vietnamese"
+    },
+    {
+      "name": "View count (Vietnamese)",
+      "pattern": "\\n\\d+ lượt xem",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes view count in Vietnamese"
+    },
+    {
+      "name": "View count (English)",
+      "pattern": "\\n\\d+ views?",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes view count in English"
+    },
+    {
+      "name": "Translate (Vietnamese)",
+      "pattern": "\\nDịch\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes 'Translate' button text in Vietnamese"
+    },
+    {
+      "name": "Translate (English)",
+      "pattern": "\\nTranslate\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes 'Translate' button text in English"
+    },
+    {
+      "name": "Reply thread (Vietnamese)",
+      "pattern": "\\nThread trả lời\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes 'Reply thread' text in Vietnamese"
+    },
+    {
+      "name": "Reply thread (English)",
+      "pattern": "\\nReply thread\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes 'Reply thread' text in English"
+    },
+    {
+      "name": "View activity (Vietnamese)",
+      "pattern": "\\nXem hoạt động\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes 'View activity' text in Vietnamese"
+    },
+    {
+      "name": "View activity (English)",
+      "pattern": "\\nView activity\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes 'View activity' text in English"
+    },
+    {
+      "name": "Hide thread",
+      "pattern": "\\nHide thread\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes 'Hide thread' text"
+    },
+    {
+      "name": "Hide translation (English)",
+      "pattern": "\\nHide translation\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes 'Hide translation' text in English"
+    },
+    {
+      "name": "Hide translation (Vietnamese)",
+      "pattern": "\\nẨn dịch\\n",
+      "flags": "g",
+      "replacement": "\\n",
+      "description": "Removes 'Hide translation' text in Vietnamese"
+    },
+    {
+      "name": "Followers",
+      "pattern": "\\nFollowers\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes 'Followers' text"
+    },
+    {
+      "name": "Following",
+      "pattern": "\\nFollowing\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes 'Following' text"
+    },
+    {
+      "name": "Add comment (Vietnamese)",
+      "pattern": "\\nThêm bình luận\\.\\.\\.\\n",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes 'Add a comment...' text in Vietnamese"
+    },
+    {
+      "name": "Add comment (English)",
+      "pattern": "\\nAdd a comment\\.\\.\\.\\n",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes 'Add a comment...' text in English"
+    },
+    {
+      "name": "Suggested for you (English)",
+      "pattern": "\\nSuggested for you\\n",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes 'Suggested for you' text in English"
+    },
+    {
+      "name": "Suggested for you (Vietnamese)",
+      "pattern": "\\nĐề xuất cho bạn\\n",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes 'Suggested for you' text in Vietnamese"
+    },
+    {
+      "name": "Handle at end of line",
+      "pattern": "@[a-zA-Z0-9._-]+\\s*$",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes handles at the end of lines"
+    },
+    {
+      "name": "Handle at start of line",
+      "pattern": "^@[a-zA-Z0-9._-]+\\s*",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes handles at the start of lines"
+    },
+    {
+      "name": "Multiple line breaks",
+      "pattern": "\\n{3,}",
+      "flags": "g",
+      "replacement": "\\n\\n",
+      "description": "Converts multiple consecutive line breaks to double line break"
+    },
+    {
+      "name": "Leading/trailing whitespace",
+      "pattern": "^\\s+|\\s+$",
+      "flags": "gm",
+      "replacement": "",
+      "description": "Removes leading/trailing whitespace on each line"
+    }
+  ]
+} 
