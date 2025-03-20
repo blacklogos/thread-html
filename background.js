@@ -46,140 +46,136 @@ function initializeDefaultPatterns() {
   ];
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'download') {
-    try {
-      console.log('Background script received download request:', request);
-      
-      if (!request.data) {
-        throw new Error('No data provided in request');
+// Track active preview tabs
+let previewTabs = {};
+
+// Function to generate HTML content from thread data
+function generateHtmlContent(data) {
+  const { posts, author, url: threadUrl } = data;
+  
+  // Try to get author information from metadata if available
+  let authorName = 'Unknown Author';
+  let authorUsername = 'unknown';
+  let avatarUrl = '';
+  
+  if (data.metaData) {
+    // Extract author name and username from og:title if available
+    if (data.metaData.ogTitle) {
+      const titleMatch = data.metaData.ogTitle.match(/on Threads: "(.*)" \| (@[a-zA-Z0-9._]+)/);
+      if (titleMatch && titleMatch.length >= 3) {
+        authorName = titleMatch[1] || authorName;
+        authorUsername = titleMatch[2] || authorUsername;
+      } else {
+        // Simpler fallback pattern
+        const simpleTitleMatch = data.metaData.ogTitle.match(/(.*) \(@([a-zA-Z0-9._]+)\)/);
+        if (simpleTitleMatch && simpleTitleMatch.length >= 3) {
+          authorName = simpleTitleMatch[1] || authorName;
+          authorUsername = `@${simpleTitleMatch[2]}` || authorUsername;
+        }
       }
-      
-      const { posts, author, url: threadUrl, metaData } = request.data;
-      
-      // Log the received data for debugging
-      console.log('Received data:', {
-        postsCount: posts?.length || 0,
-        author,
-        threadUrl,
-        metaData
+    }
+    
+    // Get avatar from og:image
+    if (data.metaData.ogImage) {
+      avatarUrl = data.metaData.ogImage;
+    }
+  }
+  
+  // Fallback to author data provided directly if metadata extraction failed
+  if (authorName === 'Unknown Author' && author && author.displayName) {
+    authorName = author.displayName;
+  }
+  
+  if (authorUsername === 'unknown' && author && author.name) {
+    authorUsername = author.name.startsWith('@') ? author.name : `@${author.name}`;
+  }
+  
+  if (!avatarUrl && author && author.avatarUrl) {
+    avatarUrl = author.avatarUrl;
+  }
+  
+  // Fallback avatar
+  if (!avatarUrl && posts && posts[0] && posts[0].mediaUrls && posts[0].mediaUrls[0]) {
+    avatarUrl = posts[0].mediaUrls[0];
+  }
+  
+  // Default avatar if none found
+  if (!avatarUrl) {
+    avatarUrl = 'https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png';
+  }
+  
+  // Ensure authorUsername is clean and valid for file naming
+  let sanitizedAuthorUsername = 'unknown';
+  if (authorUsername && authorUsername !== 'unknown') {
+    // Remove @ symbol if present
+    sanitizedAuthorUsername = authorUsername.replace(/^@/, '');
+    
+    // Ensure it's not empty
+    if (!sanitizedAuthorUsername || sanitizedAuthorUsername.trim() === '') {
+      sanitizedAuthorUsername = 'unknown';
+    }
+  }
+  
+  // Get cleaned posts - only extract the pure content
+  const cleanedPosts = posts.map(post => {
+    // Clean up the post text by removing metadata, usernames, dates, metrics
+    let cleanText = post.postText || 'No content available';
+    
+    // Add specific patterns to remove author handles if we have author info
+    const specificCleaningPatterns = [...cleaningPatterns];
+    
+    if (authorUsername && authorUsername !== 'unknown') {
+      // Extract username without @ if present
+      const usernameWithoutAt = authorUsername.startsWith('@') 
+        ? authorUsername.substring(1) 
+        : authorUsername;
+        
+      // Add pattern to remove this specific author's handle
+      specificCleaningPatterns.push({ 
+        pattern: new RegExp(`\\b${usernameWithoutAt}\\b`, 'gi'), 
+        replacement: '' 
       });
-      
-      if (!posts || !Array.isArray(posts) || posts.length === 0) {
-        throw new Error('No posts provided or invalid posts data');
-      }
-      
-      // Try to get author information from metadata if available
-      let authorName = 'Unknown Author';
-      let authorUsername = 'unknown';
-      let avatarUrl = '';
-      
-      if (metaData) {
-        // Extract author name and username from og:title if available
-        if (metaData.ogTitle) {
-          const titleMatch = metaData.ogTitle.match(/on Threads: "(.*)" \| (@[a-zA-Z0-9._]+)/);
-          if (titleMatch && titleMatch.length >= 3) {
-            authorName = titleMatch[1] || authorName;
-            authorUsername = titleMatch[2] || authorUsername;
-          } else {
-            // Simpler fallback pattern
-            const simpleTitleMatch = metaData.ogTitle.match(/(.*) \(@([a-zA-Z0-9._]+)\)/);
-            if (simpleTitleMatch && simpleTitleMatch.length >= 3) {
-              authorName = simpleTitleMatch[1] || authorName;
-              authorUsername = `@${simpleTitleMatch[2]}` || authorUsername;
-            }
-          }
-        }
-        
-        // Get avatar from og:image
-        if (metaData.ogImage) {
-          avatarUrl = metaData.ogImage;
-        }
-      }
-      
-      // Fallback to author data provided directly if metadata extraction failed
-      if (authorName === 'Unknown Author' && author && author.displayName) {
-        authorName = author.displayName;
-      }
-      
-      if (authorUsername === 'unknown' && author && author.name) {
-        authorUsername = `@${author.name}`;
-      }
-      
-      if (!avatarUrl && author && author.avatarUrl) {
-        avatarUrl = author.avatarUrl;
-      }
-      
-      // Fallback avatar
-      if (!avatarUrl && posts && posts[0] && posts[0].mediaUrls && posts[0].mediaUrls[0]) {
-        avatarUrl = posts[0].mediaUrls[0];
-      }
-      
-      // Default avatar if none found
-      if (!avatarUrl) {
-        avatarUrl = 'https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png';
-      }
-      
-      // Get cleaned posts - only extract the pure content
-      const cleanedPosts = posts.map(post => {
-        // Clean up the post text by removing metadata, usernames, dates, metrics
-        let cleanText = post.postText || 'No content available';
-        
-        // Add specific patterns to remove author handles if we have author info
-        const specificCleaningPatterns = [...cleaningPatterns];
-        
-        if (authorUsername && authorUsername !== 'unknown') {
-          // Extract username without @ if present
-          const usernameWithoutAt = authorUsername.startsWith('@') 
-            ? authorUsername.substring(1) 
-            : authorUsername;
-            
-          // Add pattern to remove this specific author's handle
-          specificCleaningPatterns.push({ 
-            pattern: new RegExp(`\\b${usernameWithoutAt}\\b`, 'gi'), 
-            replacement: '' 
-          });
-          specificCleaningPatterns.push({ 
-            pattern: new RegExp(`\\b@${usernameWithoutAt}\\b`, 'gi'), 
-            replacement: '' 
-          });
-        }
-        
-        // Apply all patterns to clean the text
-        specificCleaningPatterns.forEach(({ pattern, replacement }) => {
-          cleanText = cleanText.replace(pattern, replacement);
-        });
-        
-        // Add any final cleanup needed
-        cleanText = cleanText.trim();
-        
-        return cleanText;
+      specificCleaningPatterns.push({ 
+        pattern: new RegExp(`\\b@${usernameWithoutAt}\\b`, 'gi'), 
+        replacement: '' 
       });
-      
-      // Filter out empty posts
-      const nonEmptyPosts = cleanedPosts.filter(post => 
-        post.length > 0 && 
-        post !== 'No content available' && 
-        !/^\s*$/.test(post)
-      );
-      
-      // Use non-empty posts or default to original cleaned posts if all were filtered out
-      const finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
-      
-      // Join all cleaned posts into a single content body
-      const threadContent = finalPosts.join('\n\n');
-      
-      // Count total words for read time calculation
-      const totalWords = threadContent.split(/\s+/).length;
-      
-      // Estimate read time (average reading speed is ~200-250 words per minute)
-      const readTimeMinutes = Math.max(1, Math.round(totalWords / 200));
-      
-      // Generate a unique cache-busting timestamp for this export
-      const cacheBustTimestamp = Date.now();
-      
-      console.log('Generating HTML content for author:', authorName);
-      const htmlContent = `
+    }
+    
+    // Apply all patterns to clean the text
+    specificCleaningPatterns.forEach(({ pattern, replacement }) => {
+      cleanText = cleanText.replace(pattern, replacement);
+    });
+    
+    // Add any final cleanup needed
+    cleanText = cleanText.trim();
+    
+    return cleanText;
+  });
+  
+  // Filter out empty posts
+  const nonEmptyPosts = cleanedPosts.filter(post => 
+    post.length > 0 && 
+    post !== 'No content available' && 
+    !/^\s*$/.test(post)
+  );
+  
+  // Use non-empty posts or default to original cleaned posts if all were filtered out
+  const finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
+  
+  // Join all cleaned posts into a single content body
+  const threadContent = finalPosts.join('\n\n');
+  
+  // Count total words for read time calculation
+  const totalWords = threadContent.split(/\s+/).length;
+  
+  // Estimate read time (average reading speed is ~200-250 words per minute)
+  const readTimeMinutes = Math.max(1, Math.round(totalWords / 200));
+  
+  // Generate a unique timestamp for this export
+  const timestamp = Date.now();
+  
+  console.log('Generating HTML content for author:', authorName);
+  const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -187,11 +183,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Thread by ${authorName} (${authorUsername}) on Threads">
-  <!-- Cache busting meta tags -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <meta name="generated" content="${cacheBustTimestamp}">
   <style>
     :root {
       --bg-color: #ffffff;
@@ -359,18 +350,82 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   <div class="footer">
     <p>Source: <a href="${threadUrl}" target="_blank">Threads</a></p>
   </div>
-  
-  <div class="download-info">File downloaded successfully!</div>
 </body>
 </html>`;
 
-      console.log('Creating data URL from HTML content...');
-      // Add cache-busting parameter to data URL
-      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent) + '&cachebust=' + cacheBustTimestamp;
+  return {
+    htmlContent,
+    filename: `thread_${sanitizedAuthorUsername}_${timestamp}.html`,
+    sanitizedAuthorUsername,
+    timestamp
+  };
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'preview') {
+    try {
+      console.log('Background script received preview request:', request);
       
-      // Generate a filename based on the thread content
-      const sanitizedAuthorName = authorUsername.replace(/[@\s]/g, '').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      const filename = `thread_${sanitizedAuthorName}_${cacheBustTimestamp}.html`;
+      if (!request.data) {
+        throw new Error('No data provided for preview');
+      }
+      
+      // Generate HTML content
+      const { htmlContent, filename } = generateHtmlContent(request.data);
+      
+      // Create a data URL for the preview (without cache busting parameter)
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+      
+      // Create a new tab with the preview
+      chrome.tabs.create({ url: dataUrl, active: true }, (tab) => {
+        // Store reference to this tab for download functionality
+        previewTabs[tab.id] = {
+          htmlContent: htmlContent,
+          filename: filename,
+          originalData: request.data
+        };
+        
+        // Send a message to the popup that preview is ready
+        sendResponse({
+          success: true,
+          previewTabId: tab.id,
+          message: 'Preview opened in new tab'
+        });
+      });
+      
+      return true; // Keep the channel open for asynchronous response
+    } catch (error) {
+      console.error('Preview error:', error);
+      sendResponse({
+        success: false,
+        error: error.message
+      });
+      return false;
+    }
+  }
+  
+  if (request.action === 'download') {
+    try {
+      console.log('Background script received download request:', request);
+      
+      let htmlContent, filename;
+      
+      // Check if this is a download from a preview tab
+      if (request.previewTabId && previewTabs[request.previewTabId]) {
+        const previewData = previewTabs[request.previewTabId];
+        htmlContent = previewData.htmlContent;
+        filename = previewData.filename;
+      } else if (request.data) {
+        // Generate HTML content from scratch
+        const result = generateHtmlContent(request.data);
+        htmlContent = result.htmlContent;
+        filename = result.filename;
+      } else {
+        throw new Error('No data provided for download');
+      }
+      
+      // Create a data URL for the download (without cache busting parameter)
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
       
       console.log('Starting download with filename:', filename);
       
@@ -401,7 +456,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       
       // Return true to indicate we'll send a response asynchronously
       return true;
-      
     } catch (error) {
       console.error('Background script error:', error);
       sendResponse({ 
@@ -410,5 +464,65 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         timestamp: new Date().toISOString()
       });
     }
+  }
+  
+  if (request.action === 'downloadFromPreview') {
+    try {
+      const previewTabId = request.previewTabId;
+      
+      if (!previewTabId || !previewTabs[previewTabId]) {
+        throw new Error('Invalid preview tab ID or preview not found');
+      }
+      
+      const previewData = previewTabs[previewTabId];
+      
+      // Create data URL for the download
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(previewData.htmlContent);
+      
+      console.log('Starting download from preview with filename:', previewData.filename);
+      
+      chrome.downloads.download({
+        url: dataUrl,
+        filename: previewData.filename,
+        saveAs: true
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.error('Download error:', chrome.runtime.lastError);
+          sendResponse({ 
+            success: false, 
+            error: chrome.runtime.lastError.message 
+          });
+          return;
+        }
+        
+        console.log('Download started with ID:', downloadId);
+        
+        // Send success response
+        sendResponse({ 
+          success: true, 
+          downloadId: downloadId,
+          filename: previewData.filename,
+          timestamp: new Date().toISOString()
+        });
+      });
+      
+      // Return true to indicate we'll send a response asynchronously
+      return true;
+    } catch (error) {
+      console.error('Download from preview error:', error);
+      sendResponse({ 
+        success: false, 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+});
+
+// Listen for tab close events to clean up preview tabs
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (previewTabs[tabId]) {
+    console.log('Preview tab closed, cleaning up:', tabId);
+    delete previewTabs[tabId];
   }
 }); 

@@ -36,11 +36,25 @@
       "description": "Removes relative time in English (e.g., '5 days ago')"
     },
     {
+      "name": "Relative time inline (English)",
+      "pattern": "\\b\\d+ (days?|hours?|minutes?|seconds?) ago\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes inline relative time in English (e.g., '5 days ago')"
+    },
+    {
       "name": "Relative time (Vietnamese)",
       "pattern": "\\n\\d+ (ngày|giờ|phút|giây)( trước)?\\b",
       "flags": "g",
       "replacement": "",
       "description": "Removes relative time in Vietnamese (e.g., '5 ngày trước')"
+    },
+    {
+      "name": "Relative time inline (Vietnamese)",
+      "pattern": "\\b\\d+ (ngày|giờ|phút|giây)( trước)?\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes inline relative time in Vietnamese"
     },
     {
       "name": "Day reference",
@@ -85,11 +99,25 @@
       "description": "Removes engagement metrics in English"
     },
     {
+      "name": "Inline engagement metrics (English)",
+      "pattern": "\\b\\d+ (likes?|replies?|reposts?|comments?)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes inline engagement metrics in English"
+    },
+    {
       "name": "Engagement metrics (Vietnamese)",
       "pattern": "\\n\\d+ (lượt thích|bình luận|trả lời|chia sẻ)(\\n|$)",
       "flags": "g",
       "replacement": "\\n",
       "description": "Removes engagement metrics in Vietnamese"
+    },
+    {
+      "name": "Inline engagement metrics (Vietnamese)",
+      "pattern": "\\b\\d+ (lượt thích|bình luận|trả lời|chia sẻ)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes inline engagement metrics in Vietnamese"
     },
     {
       "name": "View count (Vietnamese)",
@@ -223,6 +251,34 @@
       "flags": "gm",
       "replacement": "",
       "description": "Removes handles at the start of lines"
+    },
+    {
+      "name": "Comment count with people",
+      "pattern": "\\d+ (people|person) (commented|replied)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes text like '5 people commented'"
+    },
+    {
+      "name": "Comment count with người (Vietnamese)",
+      "pattern": "\\d+ người (đã )?(bình luận|trả lời)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes Vietnamese text like '5 người đã bình luận'"
+    },
+    {
+      "name": "Posted time ago",
+      "pattern": "Posted \\d+ (days?|hours?|minutes?|seconds?) ago\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes 'Posted X time ago' text"
+    },
+    {
+      "name": "Date abbreviations",
+      "pattern": "\\b\\d+ (min|mins|hr|hrs)\\b",
+      "flags": "g",
+      "replacement": "",
+      "description": "Removes abbreviated time units"
     },
     {
       "name": "Multiple line breaks",

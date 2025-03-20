@@ -130,21 +130,93 @@ function findThreadPosts() {
   const postIds = new Set(); // Track post IDs to avoid duplicates
   const visitedDomNodes = new WeakSet(); // Track DOM nodes we've already processed
   
-  // First, get the author information from meta tag
+  // Try different methods to get the author username
+  let authorUsername = null;
+  
+  // Method 1: Try to get author information from meta tag
   const metaElement = document.querySelector('meta[property="og:title"]');
-  if (!metaElement || !metaElement.content) {
-    throw new Error('Author information not found in meta tag');
+  if (metaElement && metaElement.content) {
+    console.log('Found meta element with og:title:', metaElement.content);
+    
+    // Try different patterns for extracting username
+    // Pattern 1: "Name (@username) trên Threads"
+    const usernameMatch1 = metaElement.content.match(/\(@(\w+)\)/);
+    
+    // Pattern 2: "Name (@username)"
+    const usernameMatch2 = metaElement.content.match(/@(\w+)/);
+    
+    // Pattern 3: Name's post on Threads
+    const usernameMatch3 = metaElement.content.match(/([\w\s]+)'s post on Threads/);
+    
+    if (usernameMatch1) {
+      authorUsername = usernameMatch1[1];
+      console.log('Extracted username using pattern 1:', authorUsername);
+    } else if (usernameMatch2) {
+      authorUsername = usernameMatch2[1];
+      console.log('Extracted username using pattern 2:', authorUsername);
+    } else if (usernameMatch3) {
+      // Convert display name to a username-like format
+      authorUsername = usernameMatch3[1].trim().toLowerCase().replace(/\s+/g, '');
+      console.log('Created username-like string from display name:', authorUsername);
+    } else {
+      console.log('Could not extract username from meta tag content:', metaElement.content);
+    }
+  } else {
+    console.log('Meta element with og:title not found');
   }
   
-  // Extract author name from meta content (format: "Name (@username) trên Threads")
-  const metaContent = metaElement.content;
-  const usernameMatch = metaContent.match(/@(\w+)/);
-  if (!usernameMatch) {
-    throw new Error('Could not extract username from meta tag');
+  // Method 2: Try to extract from URL
+  if (!authorUsername) {
+    const urlMatch = window.location.href.match(/threads\.net\/@([^/]+)/);
+    if (urlMatch) {
+      authorUsername = urlMatch[1];
+      console.log('Extracted username from URL:', authorUsername);
+    } else {
+      console.log('Could not extract username from URL:', window.location.href);
+    }
   }
   
-  const authorUsername = usernameMatch[1];
-  console.log('Found author username:', authorUsername);
+  // Method 3: If still no username, look for a prominent username in the page
+  if (!authorUsername) {
+    console.log('Trying to find username from page content');
+    
+    // Look for username links (typically format: /@username)
+    const usernameLinks = document.querySelectorAll('a[href*="/@"]');
+    
+    if (usernameLinks.length > 0) {
+      // Create a frequency map of usernames
+      const usernameFrequency = new Map();
+      
+      usernameLinks.forEach(link => {
+        const linkUsernameMatch = link.href.match(/\/@([^/]+)/);
+        if (linkUsernameMatch) {
+          const username = linkUsernameMatch[1];
+          usernameFrequency.set(username, (usernameFrequency.get(username) || 0) + 1);
+        }
+      });
+      
+      // Find the most frequent username (likely the author)
+      let maxFrequency = 0;
+      usernameFrequency.forEach((frequency, username) => {
+        if (frequency > maxFrequency) {
+          maxFrequency = frequency;
+          authorUsername = username;
+        }
+      });
+      
+      if (authorUsername) {
+        console.log('Found most likely username from page content:', authorUsername);
+      }
+    }
+  }
+  
+  // Last resort: Use a default username
+  if (!authorUsername) {
+    authorUsername = 'unknown';
+    console.log('Using default username:', authorUsername);
+  }
+  
+  console.log('Final determined author username:', authorUsername);
   
   // Try to find posts using more reliable methods
   // Method 1: Find articles or post containers
@@ -176,24 +248,26 @@ function findThreadPosts() {
   } else {
     console.log(`Found ${allPosts.length} potential posts`);
     
-    // Filter posts by author
-    for (const post of allPosts) {
-      if (visitedDomNodes.has(post)) continue;
-      visitedDomNodes.add(post);
-      
-      const postAuthor = post.querySelector(`a[href*="/@${authorUsername}"]`);
-      if (postAuthor) {
-        const postId = generatePostId(post);
-        if (!postIds.has(postId)) {
-          postIds.add(postId);
-          posts.push(post);
-        } else {
-          console.log('Skipping duplicate post with ID:', postId.substring(0, 30) + '...');
+    // Filter posts by author if we have a username
+    if (authorUsername && authorUsername !== 'unknown') {
+      for (const post of allPosts) {
+        if (visitedDomNodes.has(post)) continue;
+        visitedDomNodes.add(post);
+        
+        const postAuthor = post.querySelector(`a[href*="/@${authorUsername}"]`);
+        if (postAuthor) {
+          const postId = generatePostId(post);
+          if (!postIds.has(postId)) {
+            postIds.add(postId);
+            posts.push(post);
+          } else {
+            console.log('Skipping duplicate post with ID:', postId.substring(0, 30) + '...');
+          }
         }
       }
     }
     
-    // If still no posts, collect all posts that have content
+    // If still no posts or no username, collect all posts that have content
     if (posts.length === 0) {
       for (const post of allPosts) {
         if (visitedDomNodes.has(post)) continue;
@@ -240,7 +314,7 @@ function findThreadPosts() {
   }
   
   console.log(`Found ${posts.length} unique posts in thread for author: ${authorUsername}`);
-  return posts;
+  return { posts, authorUsername };
 }
 
 // Helper function to generate a unique ID for a post to avoid duplicates
@@ -507,63 +581,104 @@ function extractPostData(postElement) {
 
 // Helper function to extract author information
 function extractAuthorInfo(postElement) {
-  // Get author information from meta tag
-  const metaElement = document.querySelector('meta[property="og:title"]');
-  if (metaElement && metaElement.content) {
-    const metaContent = metaElement.content;
-    console.log('Meta content:', metaContent);
-    
-    // Try to extract both display name and username if possible
-    let authorDisplayName = '';
-    let authorUsername = '';
-    
-    // Check if we can extract both the display name and username
-    const fullNameMatch = metaContent.match(/(.*?)\s+\(@(\w+)\)/);
-    if (fullNameMatch) {
-      authorDisplayName = fullNameMatch[1].trim();
-      authorUsername = fullNameMatch[2];
-    } else {
-      // Fall back to just extracting username
-      const usernameMatch = metaContent.match(/@(\w+)/);
-      if (usernameMatch) {
-        authorUsername = usernameMatch[1];
-        authorDisplayName = authorUsername; // Use username as display name fallback
-      } else {
-        authorUsername = 'unknown';
-        authorDisplayName = metaContent;
-      }
-    }
-    
-    const authorUrl = `https://www.threads.net/@${authorUsername}`;
-    
-    return {
-      name: authorUsername,
-      displayName: authorDisplayName,
-      url: authorUrl
-    };
-  }
-  
-  // Fallback to extracting from the post element
-  const authorElement = postElement.querySelector('a[role="link"][href*="/@"]') || 
-                       postElement.querySelector('a[href*="/@"]');
-  
-  let authorName = 'unknown';
+  let authorDisplayName = 'Unknown Author';
   let authorUsername = 'unknown';
   let authorUrl = 'https://www.threads.net/';
   
-  if (authorElement) {
-    authorName = authorElement.textContent.trim();
-    authorUrl = authorElement.href || 'https://www.threads.net/';
-    // Try to extract username from URL
-    const usernameMatch = authorUrl.match(/\/@([^\/]+)/);
-    if (usernameMatch) {
-      authorUsername = usernameMatch[1];
+  try {
+    // Method 1: Try to get from meta tag
+    const metaElement = document.querySelector('meta[property="og:title"]');
+    if (metaElement && metaElement.content) {
+      const metaContent = metaElement.content;
+      console.log('Meta content for author info:', metaContent);
+      
+      // Try different patterns
+      // Pattern 1: "Name (@username) trên Threads"
+      const fullNameMatch1 = metaContent.match(/(.*?)\s+\(@(\w+)\)/);
+      
+      // Pattern 2: "Name (@username)"
+      const fullNameMatch2 = metaContent.match(/(.*?)\s+@(\w+)/);
+      
+      // Pattern 3: Just the username
+      const usernameMatch = metaContent.match(/@(\w+)/);
+      
+      // Pattern 4: Name's post on Threads
+      const nameMatch = metaContent.match(/([\w\s]+)'s post on Threads/);
+      
+      if (fullNameMatch1) {
+        authorDisplayName = fullNameMatch1[1].trim();
+        authorUsername = fullNameMatch1[2];
+        console.log('Extracted using pattern 1:', authorDisplayName, authorUsername);
+      } else if (fullNameMatch2) {
+        authorDisplayName = fullNameMatch2[1].trim();
+        authorUsername = fullNameMatch2[2];
+        console.log('Extracted using pattern 2:', authorDisplayName, authorUsername);
+      } else if (usernameMatch) {
+        authorUsername = usernameMatch[1];
+        authorDisplayName = authorUsername; // Fallback
+        console.log('Extracted username only:', authorUsername);
+      } else if (nameMatch) {
+        authorDisplayName = nameMatch[1].trim();
+        // Create a username-like string from display name
+        authorUsername = authorDisplayName.toLowerCase().replace(/\s+/g, '');
+        console.log('Created username from display name:', authorDisplayName, authorUsername);
+      }
     }
+  } catch (error) {
+    console.error('Error extracting author from meta:', error);
+  }
+  
+  // Method 2: Try to extract from URL if we still don't have a username
+  if (authorUsername === 'unknown') {
+    try {
+      const urlMatch = window.location.href.match(/threads\.net\/@([^/]+)/);
+      if (urlMatch) {
+        authorUsername = urlMatch[1];
+        if (authorDisplayName === 'Unknown Author') {
+          authorDisplayName = authorUsername;
+        }
+        console.log('Extracted username from URL:', authorUsername);
+      }
+    } catch (error) {
+      console.error('Error extracting author from URL:', error);
+    }
+  }
+  
+  // Method 3: Extract from the post element
+  try {
+    const authorElement = postElement.querySelector('a[role="link"][href*="/@"]') || 
+                         postElement.querySelector('a[href*="/@"]');
+    
+    if (authorElement) {
+      // If we don't have a display name yet, use the text content
+      if (authorDisplayName === 'Unknown Author') {
+        authorDisplayName = authorElement.textContent.trim();
+      }
+      
+      // Get the author URL
+      authorUrl = authorElement.href || `https://www.threads.net/@${authorUsername}`;
+      
+      // If we don't have a username yet, try to extract it from URL
+      if (authorUsername === 'unknown') {
+        const usernameMatch = authorUrl.match(/\/@([^\/]+)/);
+        if (usernameMatch) {
+          authorUsername = usernameMatch[1];
+          console.log('Extracted username from post element URL:', authorUsername);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error extracting author from post element:', error);
+  }
+  
+  // Make sure we have a valid author URL
+  if (!authorUrl.includes(authorUsername)) {
+    authorUrl = `https://www.threads.net/@${authorUsername}`;
   }
   
   return {
     name: authorUsername,
-    displayName: authorName,
+    displayName: authorDisplayName,
     url: authorUrl
   };
 }
@@ -596,7 +711,10 @@ async function extractThreadData() {
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Find all posts in the thread
-    const posts = findThreadPosts();
+    const result = findThreadPosts();
+    const posts = result.posts; // Extract posts from the result
+    const authorUsernameFromPosts = result.authorUsername; // Extract username from the result
+    
     if (posts.length === 0) {
       throw new Error('No posts found in thread');
     }
@@ -617,32 +735,36 @@ async function extractThreadData() {
     // Get the current URL
     const url = window.location.href;
     
-    // Get author information from meta tag
-    const metaElement = document.querySelector('meta[property="og:title"]');
-    if (!metaElement || !metaElement.content) {
-      throw new Error('Author information not found in meta tag');
-    }
+    // Try to get author display name
+    let authorDisplayName = authorUsernameFromPosts;
+    let authorUsername = authorUsernameFromPosts;
     
-    const metaContent = metaElement.content;
-    
-    // Try to extract both display name and username if possible
-    let authorDisplayName = '';
-    let authorUsername = '';
-    
-    // Check if we can extract both the display name and username
-    const fullNameMatch = metaContent.match(/(.*?)\s+\(@(\w+)\)/);
-    if (fullNameMatch) {
-      authorDisplayName = fullNameMatch[1].trim();
-      authorUsername = fullNameMatch[2];
-    } else {
-      // Fall back to just extracting username
-      const usernameMatch = metaContent.match(/@(\w+)/);
-      if (usernameMatch) {
-        authorUsername = usernameMatch[1];
-        authorDisplayName = authorUsername; // Use username as display name fallback
-      } else {
-        throw new Error('Could not extract username from meta tag');
+    // Try to get additional information from meta tags
+    try {
+      const metaElement = document.querySelector('meta[property="og:title"]');
+      if (metaElement && metaElement.content) {
+        const metaContent = metaElement.content;
+        console.log('Meta content for author display name:', metaContent);
+        
+        // Try to extract display name
+        const fullNameMatch = metaContent.match(/(.*?)\s+\(@(\w+)\)/);
+        if (fullNameMatch) {
+          authorDisplayName = fullNameMatch[1].trim();
+          // If we also found a username in the meta tag and it seems valid, use it
+          if (fullNameMatch[2] && fullNameMatch[2].length > 0) {
+            authorUsername = fullNameMatch[2];
+          }
+        } else {
+          // Try other patterns
+          const nameMatch = metaContent.match(/([\w\s]+)'s post on Threads/);
+          if (nameMatch) {
+            authorDisplayName = nameMatch[1].trim();
+          }
+        }
       }
+    } catch (error) {
+      console.error('Error extracting additional author info:', error);
+      // Continue with what we have
     }
     
     console.log('Extracted thread data:', {
