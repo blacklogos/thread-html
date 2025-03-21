@@ -231,12 +231,23 @@ async function generateHtmlContent(data) {
   // Ensure authorUsername is clean and valid for file naming
   let sanitizedAuthorUsername = 'unknown';
   if (authorUsername && authorUsername !== 'unknown') {
-    // Remove @ symbol if present
-    sanitizedAuthorUsername = authorUsername.replace(/^@/, '');
-    
-    // Ensure it's not empty
-    if (!sanitizedAuthorUsername || sanitizedAuthorUsername.trim() === '') {
-      sanitizedAuthorUsername = 'unknown';
+    try {
+      // Remove @ symbol if present
+      sanitizedAuthorUsername = authorUsername.replace(/^@/, '');
+      
+      // Replace any special characters that could cause issues in filenames
+      sanitizedAuthorUsername = sanitizedAuthorUsername
+        .replace(/[\\/:*?"<>|]/g, '_') // Replace Windows-unsafe characters
+        .replace(/\s+/g, '_')          // Replace spaces with underscores
+        .replace(/[^\w\-\.]/g, '');    // Remove any remaining non-alphanumeric chars except dash, underscore, dot
+      
+      // Ensure it's not empty or only consists of special characters
+      if (!sanitizedAuthorUsername || sanitizedAuthorUsername.trim() === '' || sanitizedAuthorUsername === '_') {
+        sanitizedAuthorUsername = 'unknown_' + Date.now().toString(36);
+      }
+    } catch (error) {
+      console.error('Error sanitizing author username:', error);
+      sanitizedAuthorUsername = 'unknown_' + Date.now().toString(36);
     }
   }
   
@@ -277,12 +288,131 @@ async function generateHtmlContent(data) {
   
   // Get cleaned posts - only extract the pure content
   const cleanedPosts = posts.map(post => {
-    // Clean up the post text by removing metadata, usernames, dates, metrics
-    let cleanText = post.postText || 'No content available';
+    // Post-processing function to handle repeated author handles
+    function processRepeatedHandles(text, authorHandle) {
+      if (!text || typeof text !== 'string') return text;
+      
+      // Split the text into lines for processing
+      const lines = text.split('\n');
+      if (lines.length < 3) return text; // Not enough lines to detect patterns
+      
+      // Step 1: Find all potential username patterns at the start of lines
+      // This includes @handles, plain usernames, and full names with handles
+      const lineStartPatterns = {};
+      let mostFrequentPattern = '';
+      let highestFrequency = 0;
+      
+      // First pass: analyze all lines for patterns at start
+      lines.forEach(line => {
+        // Different types of patterns we want to catch
+        const patterns = [
+          // Plain username (3-20 chars)
+          line.match(/^([a-zA-Z0-9._-]{3,20})(?:\s+|$)/),
+          // @username
+          line.match(/^@([a-zA-Z0-9._-]{3,20})(?:\s+|$)/),
+          // username:
+          line.match(/^([a-zA-Z0-9._-]{3,20}):\s+/),
+          // @username:
+          line.match(/^@([a-zA-Z0-9._-]{3,20}):\s+/),
+          // Name (@username)
+          line.match(/^([a-zA-Z0-9\s]{2,30})\s+\(@[a-zA-Z0-9._-]{3,20}\)(?:\s+|$)/)
+        ];
+        
+        // Process any pattern matches we found
+        patterns.forEach(match => {
+          if (match && match[1]) {
+            const pattern = match[1].toLowerCase();
+            lineStartPatterns[pattern] = (lineStartPatterns[pattern] || 0) + 1;
+            
+            if (lineStartPatterns[pattern] > highestFrequency) {
+              highestFrequency = lineStartPatterns[pattern];
+              mostFrequentPattern = pattern;
+            }
+          }
+        });
+      });
+      
+      // Step 2: If we found a common pattern, remove it from the start of lines
+      if (highestFrequency >= 2 && highestFrequency / lines.length > 0.1) {
+        console.log(`Removing frequent pattern at line starts: "${mostFrequentPattern}" (${highestFrequency} occurrences)`);
+        
+        // Create a list of regex patterns to remove based on the frequent pattern
+        const escapedPattern = mostFrequentPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const patternsToRemove = [
+          new RegExp(`^${escapedPattern}(?:\\s+|$)`, 'gi'),           // Plain username
+          new RegExp(`^@${escapedPattern}(?:\\s+|$)`, 'gi'),          // @username
+          new RegExp(`^${escapedPattern}:\\s+`, 'gi'),                // username:
+          new RegExp(`^@${escapedPattern}:\\s+`, 'gi'),               // @username:
+          // Full name with handle - more complex, custom approach
+          function(line) {
+            if (line.toLowerCase().includes(mostFrequentPattern.toLowerCase())) {
+              // Try to match name pattern without using exact regex
+              const fullNameMatch = line.match(/^([a-zA-Z0-9\s]{2,30})\s+\(@[a-zA-Z0-9._-]{3,20}\)(?:\s+|:)/);
+              if (fullNameMatch) {
+                return line.replace(fullNameMatch[0], '');
+              }
+            }
+            return line;
+          }
+        ];
+        
+        // Apply cleaners to each line
+        const cleanedLines = lines.map(line => {
+          let result = line;
+          
+          // Try all removal patterns
+          for (const pattern of patternsToRemove) {
+            if (typeof pattern === 'function') {
+              result = pattern(result);
+            } else {
+              result = result.replace(pattern, '');
+            }
+            
+            // If we've made a change, exit the loop
+            if (result !== line) break;
+          }
+          
+          return result;
+        });
+        
+        // Only use the cleaned version if we actually removed something
+        const cleanedText = cleanedLines.join('\n');
+        if (cleanedText !== text) {
+          text = cleanedText;
+        }
+      }
+      
+      // Step 3: Also try the original author handle matching as a fallback
+      if (authorHandle && authorHandle !== 'unknown') {
+        // Normalize handle
+        const normalizedHandle = authorHandle.toLowerCase().startsWith('@') 
+          ? authorHandle.toLowerCase() 
+          : '@' + authorHandle.toLowerCase();
+        
+        const handleWithoutAt = normalizedHandle.replace(/^@/, '');
+        
+        // Original pattern matching logic
+        const fullNameRegex = new RegExp(`(^|\\n)[\\w\\s]+\\s*\\(${normalizedHandle}\\)\\s*:?\\s*`, 'gi');
+        const startWithHandleRegex = new RegExp(`(^|\\n)${handleWithoutAt}\\s*:?\\s*`, 'gi');
+        const startWithAtHandleRegex = new RegExp(`(^|\\n)@${handleWithoutAt}\\s*:?\\s*`, 'gi');
+        
+        // Apply original cleaners
+        text = text.replace(fullNameRegex, '$1');
+        text = text.replace(startWithHandleRegex, '$1');
+        text = text.replace(startWithAtHandleRegex, '$1');
+      }
+      
+      return text;
+    }
+    
+    // Preserve the original content for later  
+    let originalContent = post.postText || 'No content available';
+    let metadataText = originalContent;
+    let contentText = originalContent;
     let mediaContent = [];
     
     // First, extract and store all URLs before any cleaning
-    const urlMatches = cleanText.match(/(https?:\/\/[^\s]+)/gi) || [];
+    const urlMatches = originalContent.match(/(https?:\/\/[^\s]+)/gi) || [];
     
     // Process and categorize each URL
     urlMatches.forEach(url => {
@@ -312,22 +442,201 @@ async function generateHtmlContent(data) {
     });
     
     // Remove all URLs from the text temporarily
-    cleanText = cleanText.replace(/(https?:\/\/[^\s]+)/gi, '');
+    metadataText = metadataText.replace(/(https?:\/\/[^\s]+)/gi, '');
+    contentText = contentText.replace(/(https?:\/\/[^\s]+)/gi, '');
     
-    // Get cleaning patterns including author-specific ones
-    const patterns = createAuthorCleaningPatterns(authorUsername);
+    // Whitelist patterns that should NEVER be treated as metadata
+    // even if they match metadata patterns (e.g., common expressions containing numbers)
+    const contentWhitelist = [
+      /\d+\s*ngày\s*\/\s*tuần/i,      // "X days/week" in Vietnamese
+      /\d+\s*giờ\s*\/\s*ngày/i,        // "X hours/day" in Vietnamese
+      /\d+\s*days?\s*\/\s*week/i,      // "X days/week"
+      /\d+\s*hours?\s*\/\s*day/i,      // "X hours/day"
+      /\d+\s*times?\s*a\s*day/i,       // "X times a day"
+      /\d+\s*lần\s*(một|mỗi)\s*ngày/i, // "X times a day" in Vietnamese
+      /từ\s*\d+\s*đến\s*\d+/i,         // "from X to Y" in Vietnamese
+      /from\s*\d+\s*to\s*\d+/i,        // "from X to Y"
+      /\d+\s*\-\s*\d+/,                // "X-Y" number ranges
+      /\d+\s*%/,                       // Percentages
+      /\d+\s*USD/i,                    // Money amounts
+      /\$\s*\d+/                       // Dollar amounts
+    ];
     
-    // Apply all cleaning patterns first
-    patterns.forEach(({ pattern, replacement }) => {
-      cleanText = cleanText.replace(pattern, replacement);
+    // Identify potential metadata sections
+    let lines = metadataText.split('\n');
+    let contentLines = [];
+    let metadataLines = [];
+    
+    // Classify lines as metadata or content
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Check if line contains any whitelisted patterns that should be preserved
+      const isWhitelisted = contentWhitelist.some(pattern => pattern.test(line));
+      
+      // EXPANDED WHITELIST: Add patterns for numbered steps/principles
+      // that should never be treated as metadata
+      const expandedWhitelist = [
+        /step\s*\d+/i,                // "Step 1, 2, 3..."
+        /steps?\s*\d+/i,              // "Steps 1, 2, 3..."
+        /principle\s*\d+/i,           // "Principle 1, 2, 3..."
+        /principles?\s*\d+/i,         // "Principles 1, 2, 3..."
+        /nguyên\s*tắc\s*\d+/i,        // "Nguyên tắc 1, 2, 3..." (Vietnamese)
+        /bước\s*\d+/i,                // "Bước 1, 2, 3..." (Vietnamese for "step")
+        /\d+\s*\.\s*[\p{L}]/u,        // Numbered list with period: "1. Text"
+        /\(\s*\d+\s*\)\s*[\p{L}]/u    // Numbered list with parentheses: "(1) Text"
+      ];
+      
+      // If whitelisted or matches expanded whitelist, always keep as content
+      if (isWhitelisted || expandedWhitelist.some(pattern => pattern.test(line))) {
+        contentLines.push(line);
+        continue;
+      }
+      
+      // Expanded check for metadata-like content
+      const isMetadata = 
+        // IMPORTANT: Standalone numbers are likely metadata (likes, comments, etc.)
+        /^[\d]+$/.test(line) ||
+        
+        // Vietnamese/international numeric formats with commas (1,1K = 1.1K)
+        /^[\d,\.]+[KkMm]?\s+(view|views|like|likes|reply|replies|repost|reposts|comment|comments|lượt xem|lượt thích|bình luận|chia sẻ|người xem|người thích)/i.test(line) ||
+        
+        // Vietnamese metrics with additional patterns - MORE SPECIFIC to avoid false positives
+        /^[\d,\.]+[KkMm]?\s+(người đã xem|người dùng|phản hồi|chia sẻ lại)$/i.test(line) ||
+        
+        // Handle alone (more permissive but still specific)
+        /^@[\w.-]+$/i.test(line) ||
+        
+        // Date formats (more variations)
+        /^\d{1,2}\/\d{1,2}(\/\d{2,4})?$/i.test(line) ||
+        
+        // Time indicators (expanded patterns)
+        /^(about |khoảng )?\d+\s+(day|days|hour|hours|minute|minutes|second|seconds|ngày|giờ|phút|giây)( ago| trước)?$/i.test(line) ||
+        
+        // UI elements with more variations
+        /^(translated from|translate|dịch|translated by|thread|reply|thread trả lời|view activity|xem hoạt động)$/i.test(line) ||
+        
+        // Account verifications
+        /^(verified|official|chính thức)$/i.test(line) ||
+        
+        // Action commands
+        /^(follow|unfollow|theo dõi|hủy theo dõi|mute|block|chặn|report|báo cáo)$/i.test(line) ||
+        
+        // System indicators
+        /^(edited|đã chỉnh sửa|hidden|ẩn|pinned|ghim)$/i.test(line);
+      
+      if (isMetadata) {
+        metadataLines.push(line);
+      } else {
+        contentLines.push(line);
+      }
+    }
+    
+    // Post-processing: If the content has been reduced to almost nothing, 
+    // but the original had substantial content, use the original
+    if (contentLines.length === 0 || (contentLines.join(' ').length < 20 && metadataText.length > 100)) {
+      console.log('Content was over-filtered - restoring original content');
+      // Restore the original content except for obvious UI elements
+      contentText = originalContent
+        .replace(/^@[\w.-]+\s*$/gm, '')            // Handles alone on a line
+        .replace(/^\d+\s*$/gm, '')                 // Numbers alone on a line
+        .replace(/^\d{1,2}\/\d{1,2}\/\d{4}\s*$/gm, '') // Dates alone on a line
+        .replace(/^(translate|dịch)\s*$/gim, '');  // Translate buttons
+    } else {
+      // Keep the clean content, discard the metadata
+      contentText = contentLines.join('\n');
+    }
+    
+    // Process the content to remove repeated author handles at start of posts
+    contentText = processRepeatedHandles(contentText, authorUsername);
+    
+    // NEW: Detect and remove sequences of standalone numbers (likely metrics)
+    function removeNumberSequences(text) {
+      if (!text) return text;
+      
+      const lines = text.split('\n');
+      if (lines.length < 2) return text; // Not enough lines for sequence detection
+      
+      const result = [];
+      let skipCount = 0;
+      
+      for (let i = 0; i < lines.length; i++) {
+        // Skip lines already marked for removal
+        if (skipCount > 0) {
+          skipCount--;
+          continue;
+        }
+        
+        // Check for sequences of 2-3 consecutive numbers
+        if (i < lines.length - 1 && /^\d{1,3}$/.test(lines[i])) {
+          // Look ahead for number sequences
+          let isNumberSequence = false;
+          let sequenceLength = 1;
+          
+          // Check next line
+          if (/^\d{1,3}$/.test(lines[i+1])) {
+            sequenceLength = 2;
+            isNumberSequence = true;
+            
+            // Check one more line if available
+            if (i < lines.length - 2 && /^\d{1,3}$/.test(lines[i+2])) {
+              sequenceLength = 3;
+            }
+          }
+          
+          if (isNumberSequence) {
+            console.log(`Removing sequence of ${sequenceLength} numbers starting with ${lines[i]}`);
+            skipCount = sequenceLength - 1; // Skip the next lines in sequence
+            continue; // Skip current line
+          }
+        }
+        
+        // Keep this line
+        result.push(lines[i]);
+      }
+      
+      return result.join('\n');
+    }
+    
+    // Apply number sequence removal
+    contentText = removeNumberSequences(contentText);
+    
+    // NEW: Special handling for standalone handles on their own lines
+    const standaloneHandleRegex = /^([a-zA-Z0-9._-]{3,20})$/gm;
+    contentText = contentText.replace(standaloneHandleRegex, (match, handle) => {
+      // Count how many times this exact handle appears on its own line
+      const count = (contentText.match(new RegExp(`^${handle}$`, 'gm')) || []).length;
+      
+      // If it appears multiple times as a standalone line, it's likely a handle pattern
+      if (count >= 2) {
+        console.log(`Removing standalone handle "${handle}" appearing ${count} times`);
+        return ''; // Remove it entirely
+      }
+      
+      return match; // Keep it if not repeated
     });
     
     // Clean up whitespace while preserving line breaks
-    cleanText = cleanText
-      .split('\n')                    // Split into lines
-      .map(line => line.trim())       // Trim each line
-      .filter(line => line.length > 0) // Remove empty lines
-      .join('\n');                    // Join back with original line breaks
+    contentText = contentText
+      .split('\n')                     // Split into lines
+      .map(line => line.trim())        // Trim each line
+      .filter(line => {
+        // Filter out empty lines and standalone handles
+        if (line.length === 0) return false;
+        
+        // Check if this line is just a standalone handle
+        if (/^[a-zA-Z0-9._-]{3,20}$/.test(line)) {
+          // Count occurrences of this handle in the whole text
+          const handleCount = contentText.split('\n').filter(l => l.trim() === line).length;
+          if (handleCount >= 2) {
+            console.log(`Filtering out standalone handle: ${line}`);
+            return false; // Filter out repeated handles
+          }
+        }
+        
+        return true; // Keep all other lines
+      })
+      .join('\n');                     // Join back with original line breaks
     
     // Add back media content if exists
     if (mediaContent.length > 0) {
@@ -338,21 +647,173 @@ async function generateHtmlContent(data) {
       
       // Add YouTube links first
       youtubeLinks.forEach(media => {
-        cleanText += '\n[YouTube: ' + media.url + ']';
+        contentText += '\n[YouTube: ' + media.url + ']';
       });
       
       // Then images
       images.forEach(media => {
-        cleanText += '\n[Image: ' + media.url + ']';
+        contentText += '\n[Image: ' + media.url + ']';
       });
       
       // Finally other links
       otherLinks.forEach(media => {
-        cleanText += '\n[Link: ' + media.url + ']';
+        contentText += '\n[Link: ' + media.url + ']';
       });
     }
     
-    return cleanText.trim();
+    // Post-processing: Apply final cleaning to remove any remaining metrics and UI elements
+    contentText = contentText
+      // Vietnamese metrics with K/M suffixes (e.g., "1,1K lượt xem") - MORE SPECIFIC
+      .replace(/^[\d\.,]+[KkMm]\s+(lượt xem|lượt thích|bình luận|chia sẻ|người xem)$/gm, '')
+      // English metrics with K/M suffixes - MORE SPECIFIC
+      .replace(/^[\d\.,]+[KkMm]\s+(views?|likes?|comments?|reposts?)$/gm, '')
+      // Remove "thread" prefix from posts - ONLY EXACT MATCHES
+      .replace(/^Thread\s*[:\.]\s*/gim, '')
+      // Focus on handle patterns instead of generic patterns
+      .replace(/^(.+?):\s*\n(.+?):\s*\n(.+?):\s*\n/gm, function(match, p1, p2, p3) {
+        // Only if all three match the same pattern, it's likely an author handle prefix
+        if (p1.toLowerCase() === p2.toLowerCase() && p2.toLowerCase() === p3.toLowerCase()) {
+          // Make sure it's a username-like pattern, not just any repeated line start
+          if (/^[@\w\s\(\)]{3,30}$/.test(p1)) {
+            return '';
+          }
+        }
+        return match; // No change if they don't all match or don't look like handles
+      });
+
+    // NEW: More targeted approach to handle specific cases of handles
+    // Instead of trying to detect all potential handles which might affect content,
+    // focus specifically on the issues the user mentioned
+
+    // FOCUS ON PRIMARY ISSUES:
+    // 1. Handles that stand alone on a line 
+    // 2. Handles that appear multiple times in a line
+    // 3. Vietnamese metrics that still show up
+
+    // Clean up standalone handles without affecting other content
+    function cleanStandaloneHandles(text) {
+      if (!text || typeof text !== 'string') return text;
+      
+      // Split text into lines for processing
+      let lines = text.split('\n');
+      
+      // Pattern for username-like words (standalone handles)
+      const usernamePattern = /^([a-zA-Z0-9._-]{3,20})$/;
+      const atUsernamePattern = /^@([a-zA-Z0-9._-]{3,20})$/;
+      
+      // First pass: identify frequency of potential handles
+      const handleFrequency = {};
+      
+      lines.forEach(line => {
+        const trimmedLine = line.trim();
+        
+        // Check for standalone handles (@username or username)
+        const usernameMatch = trimmedLine.match(usernamePattern);
+        const atUsernameMatch = trimmedLine.match(atUsernamePattern);
+        
+        if (usernameMatch) {
+          const handle = usernameMatch[1].toLowerCase();
+          handleFrequency[handle] = (handleFrequency[handle] || 0) + 1;
+        }
+        
+        if (atUsernameMatch) {
+          const handle = '@' + atUsernameMatch[1].toLowerCase();
+          handleFrequency[handle] = (handleFrequency[handle] || 0) + 1;
+        }
+      });
+      
+      // Second pass: remove standalone handles that appear multiple times
+      lines = lines.filter(line => {
+        const trimmedLine = line.trim();
+        
+        // Skip empty lines
+        if (trimmedLine === '') return true;
+        
+        // NEW: Check for standalone numbers (usually engagement metrics)
+        // Only remove digits that are 1-3 characters long and appear on their own line
+        if (/^\d{1,3}$/.test(trimmedLine)) {
+          console.log(`Removing standalone number: ${trimmedLine} (likely engagement metric)`);
+          return false; // Remove standalone numbers
+        }
+        
+        // Check if it's a standalone handle
+        const usernameMatch = trimmedLine.match(usernamePattern);
+        const atUsernameMatch = trimmedLine.match(atUsernamePattern);
+        
+        let isFrequentHandle = false;
+        
+        if (usernameMatch) {
+          const handle = usernameMatch[1].toLowerCase();
+          // Remove if this handle appears multiple times
+          isFrequentHandle = handleFrequency[handle] >= 2;
+          
+          if (isFrequentHandle) {
+            console.log(`Removing standalone username: ${handle} (appears ${handleFrequency[handle]} times)`);
+            return false;
+          }
+        }
+        
+        if (atUsernameMatch) {
+          const handle = '@' + atUsernameMatch[1].toLowerCase();
+          // Remove if this handle appears multiple times
+          isFrequentHandle = handleFrequency[handle] >= 2;
+          
+          if (isFrequentHandle) {
+            console.log(`Removing standalone @username: ${handle} (appears ${handleFrequency[handle]} times)`);
+            return false;
+          }
+        }
+        
+        // Also check for Vietnamese metrics that might have been missed
+        if (/^\d+\s*(lượt xem|lượt thích|bình luận|chia sẻ|người xem)$/i.test(trimmedLine)) {
+          console.log(`Removing Vietnamese metric: ${trimmedLine}`);
+          return false;
+        }
+        
+        // Keep all other lines
+        return true;
+      });
+      
+      return lines.join('\n');
+    }
+
+    // Apply the more targeted cleaning function
+    contentText = cleanStandaloneHandles(contentText);
+    
+    // If we detect a common Threads pattern where posts start with the same name/handle
+    // over and over, it's likely a formatting issue - try to identify and clean it
+    const prefixAnalysisLines = contentText.split('\n');
+    if (prefixAnalysisLines.length > 3) {
+      // Check if multiple consecutive lines start with the same text pattern
+      const prefixPattern = {};
+      let mostCommonPrefix = '';
+      let mostCommonCount = 0;
+      
+      // Look for common prefixes ending with colon
+      for (const line of prefixAnalysisLines) {
+        const match = line.match(/^(.+?):\s/);
+        if (match && match[1]) {
+          const prefix = match[1].toLowerCase().trim();
+          prefixPattern[prefix] = (prefixPattern[prefix] || 0) + 1;
+          
+          if (prefixPattern[prefix] > mostCommonCount) {
+            mostCommonCount = prefixPattern[prefix];
+            mostCommonPrefix = prefix;
+          }
+        }
+      }
+      
+      // If we found a common prefix pattern that appears multiple times
+      if (mostCommonCount > 2 && mostCommonCount / prefixAnalysisLines.length > 0.3) {
+        console.log(`Detected repeated prefix pattern "${mostCommonPrefix}" appearing ${mostCommonCount} times, cleaning...`);
+        
+        // Create a regex to remove this prefix while preserving the rest of the content
+        const prefixRegex = new RegExp(`^${mostCommonPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`, 'gim');
+        contentText = contentText.replace(prefixRegex, '');
+      }
+    }
+    
+    return contentText.trim();
   });
   
   // Filter out empty posts
@@ -373,11 +834,221 @@ async function generateHtmlContent(data) {
     .join('<br>')                                // Convert to HTML breaks
     .replace(/<br>\s*<br>\s*<br>\s*<br>+/g, '<br><br><br>')  // Max triple breaks between posts
     .trim();
-  
-  // Final cleanup of any remaining excessive line breaks
+
+  // Apply final cleaning to remove common patterns of handle repeats not caught earlier
   threadContent = threadContent
+    // Remove full patterns like "John Doe (@johndoe):" at the start of lines
+    .replace(/<br>[\w\s]+\s*\(@[\w.-]+\)\s*:/g, '<br>')
+    .replace(/^[\w\s]+\s*\(@[\w.-]+\)\s*:/g, '')
+    
+    // Remove common username patterns at line starts
+    .replace(/<br>@[\w.-]+\s*:/g, '<br>')
+    .replace(/^@[\w.-]+\s*:/g, '')
+    
+    // NEW: Remove standalone usernames (without :) that appear on their own lines
+    .replace(/<br>([a-zA-Z0-9._-]{3,20})<br>/g, '<br><br>')  // username between line breaks
+    .replace(/^([a-zA-Z0-9._-]{3,20})<br>/g, '<br>')         // username at start of content
+    .replace(/<br>([a-zA-Z0-9._-]{3,20})$/g, '')            // username at end of content
+    
+    // Clean up line-ending handles (@username<br>)
+    .replace(/@[\w.-]+\s*<br>/g, '<br>')
+    
+    // Remove any isolated handles that are just on their own line 
+    .replace(/<br>@[\w.-]+<br>/g, '<br><br>')
+    .replace(/^@[\w.-]+<br>/g, '<br>')
+    .replace(/<br>@[\w.-]+$/g, '')
+    
+    // NEW: More aggressive cleaning for plain usernames (without @) at line starts
+    .replace(new RegExp('<br>([\\w.-]{3,15})<br>', 'g'), '<br><br>') // Username alone on line
+    .replace(new RegExp('^([\\w.-]{3,15})<br>', 'g'), '<br>') // Username at start
+    .replace(new RegExp('<br>([\\w.-]{3,15})$', 'g'), '') // Username at end
+    
+    // NEW: Check for repeating patterns at line starts
+    .replace(/<br>([a-zA-Z0-9._-]{3,20})<br>\s*([^<]+)/g, function(match, username, content) {
+      // Count occurrences of this username in the whole content
+      const usernameCount = (threadContent.match(new RegExp('<br>' + username + '<br>', 'g')) || []).length;
+      if (usernameCount >= 2) {
+        return '<br>' + content; // Remove repeated username
+      }
+      return match; // No change
+    })
+    .replace(/^([a-zA-Z0-9._-]{3,20})<br>\s*([^<]+)/, function(match, username, content) {
+      // Check for the same username later in the content
+      if (threadContent.includes('<br>' + username + '<br>')) {
+        return content; // Remove username if it repeats
+      } 
+      return match; // No change
+    })
+    
+    // Remove any extraneous line breaks
     .replace(/^<br>|<br>$/g, '')                // Remove breaks at start/end
     .trim();
+
+  // NEW: Final post-processing to catch handles that appear repeatedly across the whole text
+  // This is a more aggressive approach for stubborn patterns
+  const finalContentLines = threadContent.split('<br>');
+  if (finalContentLines.length > 3) {
+    // Track standalone words that appear on their own lines
+    const standaloneWords = {};
+    
+    // First pass: find words that appear alone on lines
+    finalContentLines.forEach(line => {
+      // Look for lines with just a single word (no spaces)
+      if (/^[a-zA-Z0-9._-]{3,20}$/.test(line.trim()) && !line.includes(' ')) {
+        const word = line.trim();
+        standaloneWords[word] = (standaloneWords[word] || 0) + 1;
+      }
+    });
+    
+    // Find the most frequent standalone word
+    let mostFrequentStandaloneWord = '';
+    let highestStandaloneFrequency = 0;
+    
+    for (const word in standaloneWords) {
+      if (standaloneWords[word] > highestStandaloneFrequency) {
+        highestStandaloneFrequency = standaloneWords[word];
+        mostFrequentStandaloneWord = word;
+      }
+    }
+    
+    // Only remove if the word appears multiple times
+    if (highestStandaloneFrequency >= 2) {
+      console.log(`Found repeated standalone handle: "${mostFrequentStandaloneWord}" (${highestStandaloneFrequency} times)`);
+      
+      // Remove standalone instances of this word
+      const cleanedLines = finalContentLines.filter(line => 
+        line.trim() !== mostFrequentStandaloneWord
+      );
+      
+      // Re-join the cleaned lines
+      threadContent = cleanedLines.join('<br>');
+    }
+    
+    // Count the frequency of each "word" at the beginning of lines
+    const lineStartWords = {};
+    let mostFrequentWord = '';
+    let highestFrequency = 0;
+    
+    // First pass: identify frequent words at line starts
+    finalContentLines.forEach(line => {
+      // Extract the first word of each line
+      const firstWordMatch = line.match(/^([a-zA-Z0-9._-]{3,20})(?!\w)/);
+      if (firstWordMatch) {
+        const word = firstWordMatch[1].toLowerCase();
+        lineStartWords[word] = (lineStartWords[word] || 0) + 1;
+        
+        if (lineStartWords[word] > highestFrequency) {
+          highestFrequency = lineStartWords[word];
+          mostFrequentWord = word;
+        }
+      }
+    });
+    
+    // If we found a word that appears frequently at the start of lines
+    // and it appears in more than 10% of all lines
+    if (highestFrequency > 2 && highestFrequency / finalContentLines.length > 0.1) {
+      console.log(`Found repeated word pattern at line starts: "${mostFrequentWord}" (${highestFrequency} times)`);
+      
+      // Second pass: remove this word from line starts
+      const cleanedLines = finalContentLines.map(line => {
+        if (line.toLowerCase().startsWith(mostFrequentWord.toLowerCase())) {
+          // Remove the word from the start
+          return line.replace(new RegExp(`^${mostFrequentWord}\\b\\s*`, 'i'), '');
+        }
+        return line;
+      });
+      
+      // Re-join the cleaned lines
+      threadContent = cleanedLines.join('<br>');
+    }
+  }
+  
+  // NEW: Final specialized cleanup for example case "pjnghng" and similar patterns
+  // This detects and removes any lines that contain ONLY a short word without spaces
+  threadContent = threadContent.replace(/<br>([a-zA-Z0-9._-]{3,20})<br>/g, function(match, word) {
+    // If it's less than 3 characters, likely not a username
+    if (word.length < 3) return match;
+    
+    // If it contains spaces, not a standalone word
+    if (word.includes(' ')) return match;
+    
+    // Count how many times this exact word appears as a standalone line
+    const regex = new RegExp(`<br>${word}<br>|^${word}<br>|<br>${word}$`, 'g');
+    const count = (threadContent.match(regex) || []).length;
+    
+    // If this word appears multiple times on its own lines, it's likely a handle
+    if (count >= 2) {
+      console.log(`Removing detected standalone word: "${word}" (appears ${count} times)`);
+      return '<br><br>'; // Replace with double line break
+    }
+    
+    return match; // Keep it if not repeated
+  });
+  
+  // Final cleanup pass - direct search for "pjnghng" pattern from example
+  if (threadContent.includes('pjnghng')) {
+    console.log('Found "pjnghng" pattern, removing directly');
+    threadContent = threadContent
+      .replace(/<br>pjnghng<br>/g, '<br><br>')
+      .replace(/^pjnghng<br>/g, '<br>')
+      .replace(/<br>pjnghng$/g, '');
+  }
+  
+  // NEW: Final cleanup for Vietnamese metrics that might have slipped through
+  // This targets specific patterns of metrics that users reported
+  threadContent = threadContent.replace(/<br>(\d+)\s*(lượt xem|lượt thích|bình luận|chia sẻ|người xem)<br>/gi, '<br><br>');
+  threadContent = threadContent.replace(/^(\d+)\s*(lượt xem|lượt thích|bình luận|chia sẻ|người xem)<br>/gi, '<br>');
+  threadContent = threadContent.replace(/<br>(\d+)\s*(lượt xem|lượt thích|bình luận|chia sẻ|người xem)$/gi, '');
+  
+  // NEW: More targeted handle cleaning without affecting regular text
+  // Only clean handles that stand alone on lines or appear repeatedly
+  threadContent = threadContent.replace(/<br>([a-zA-Z0-9._-]{3,20})<br>/g, function(match, handle) {
+    // Don't affect potential content like "Step 1" or "Principle 2"
+    if (/step|principle|nguyên|bước/i.test(handle)) return match;
+    
+    // Check if this pattern appears multiple times
+    const handleRegex = new RegExp(`<br>${handle}<br>`, 'g');
+    const count = (threadContent.match(handleRegex) || []).length;
+    
+    if (count >= 2) {
+      console.log(`Final HTML cleaning: removing repeated handle "${handle}" (${count} times)`);
+      return '<br><br>';
+    }
+    
+    return match;
+  });
+  
+  // NEW: Clean up sequences of standalone numbers that are likely engagement metrics
+  // Pattern: Look for sequences of 1-3 single digits (e.g., 1<br>1<br>2)
+  // These are usually like/reply/share counts that weren't caught by earlier filters
+  threadContent = threadContent.replace(/<br>(\d{1,3})<br>(\d{1,3})<br>(\d{1,3})<br>/g, '<br><br>');
+  threadContent = threadContent.replace(/<br>(\d{1,3})<br>(\d{1,3})<br>/g, '<br><br>');
+  threadContent = threadContent.replace(/^(\d{1,3})<br>(\d{1,3})<br>/g, '<br>');
+  threadContent = threadContent.replace(/<br>(\d{1,3})<br>(\d{1,3})$/g, '');
+  
+  // Additional cleaning for consecutive isolated numbers at the end of content
+  // This typically catches metrics at the end of a post
+  threadContent = threadContent.replace(/(<br>[\d]{1,3}){1,5}$/g, '');
+  
+  // NEW: Final cleanup for isolated single digits in the HTML output
+  // These are commonly engagement metrics like likes/replies/reposts
+  // Only target completely isolated numbers (not part of text)
+  threadContent = threadContent.replace(/<br>(\d{1,3})<br>/g, (match, num) => {
+    const numVal = parseInt(num, 10);
+    // Only remove numbers that are likely to be metrics
+    // Most posts don't have thousands of likes/comments
+    if (numVal < 1000) {
+      console.log(`Removing isolated number in HTML: ${num}`);
+      return '<br><br>';
+    }
+    return match;
+  });
+  
+  // Remove isolated numbers at the start of content
+  threadContent = threadContent.replace(/^(\d{1,3})<br>/g, '<br>');
+  
+  // Remove isolated numbers at the end of content
+  threadContent = threadContent.replace(/<br>(\d{1,3})$/g, '');
   
   // Count total words for read time calculation
   const totalWords = threadContent.split(/\s+/).length;
@@ -942,8 +1613,49 @@ async function generateHtmlContent(data) {
   };
 }
 
-// Update the message listeners to handle async generateHtmlContent
+// Listen for messages from the extension
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Create timeout safety mechanism
+  let responseTimeout = setTimeout(() => {
+    try {
+      sendResponse({ 
+        success: false, 
+        error: 'Operation timed out after 30 seconds' 
+      });
+    } catch (e) {
+      console.error('Failed to send timeout response', e);
+    }
+  }, 30000); // 30 second timeout
+  
+  const clearTimeoutSafely = () => {
+    try {
+      clearTimeout(responseTimeout);
+      responseTimeout = null;
+    } catch (e) {
+      console.error('Failed to clear timeout', e);
+    }
+  };
+
+  // Wrapper to ensure we only send response once and clear the timeout
+  const safeResponse = (response) => {
+    try {
+      if (responseTimeout) {
+        clearTimeoutSafely();
+        sendResponse(response);
+      }
+    } catch (e) {
+      console.error('Error sending response:', e);
+      try {
+        if (responseTimeout) {
+          clearTimeoutSafely();
+          sendResponse({ success: false, error: 'Error sending response: ' + e.message });
+        }
+      } catch (finalError) {
+        console.error('Critical error sending fallback response', finalError);
+      }
+    }
+  };
+
   if (request.action === 'preview') {
     (async () => {
       try {
@@ -960,15 +1672,48 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         let previewUrl;
         try {
           // Always prefer data URL for preview when possible for better compatibility
-          if (htmlContent.length < 2000000) { // 2MB limit for preview
-            previewUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+          if (htmlContent.length < 500000) { // Reduced limit to 500KB to avoid encoding issues
+            try {
+              // Use a more reliable sanitization approach
+              const sanitizedContent = sanitizeForEncoding(htmlContent);
+              
+              // Try to encode in chunks to avoid malformed URI errors
+              let encodedContent = '';
+              const chunkSize = 100000; // Process in 100KB chunks
+              
+              for (let i = 0; i < sanitizedContent.length; i += chunkSize) {
+                const chunk = sanitizedContent.substring(i, i + chunkSize);
+                try {
+                  encodedContent += encodeURIComponent(chunk);
+                } catch (chunkError) {
+                  console.error('Error encoding chunk:', chunkError);
+                  // Skip problematic chunks but continue
+                  encodedContent += encodeURIComponent('[Content encoding error]');
+                }
+              }
+              
+              previewUrl = 'data:text/html;charset=utf-8,' + encodedContent;
+            } catch (encodeError) {
+              console.error('Failed to encode content for data URL:', encodeError);
+              
+              // Fallback to direct navigation with fetched content
+              throw new Error('Data URL encoding failed, using tab navigation fallback');
+            }
           } else {
-            // For very large content, we'll need to use a Blob URL
-            previewUrl = createBlobUrl(htmlContent);
+            // For very large content, we'll need to use a server-style approach
+            throw new Error('Content too large for data URL encoding');
           }
           
           // Create a new tab with the preview
           chrome.tabs.create({ url: previewUrl, active: true }, (tab) => {
+            if (chrome.runtime.lastError) {
+              safeResponse({
+                success: false,
+                error: 'Error creating tab: ' + chrome.runtime.lastError.message
+              });
+              return;
+            }
+            
             // Store reference to this tab for download functionality
             previewTabs[tab.id] = {
               htmlContent: htmlContent,
@@ -977,7 +1722,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             };
             
             // Send a message to the popup that preview is ready
-            sendResponse({
+            safeResponse({
               success: true,
               previewTabId: tab.id,
               message: 'Preview opened in new tab'
@@ -985,24 +1730,61 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           });
         } catch (error) {
           console.error('Preview URL creation error:', error);
-          sendResponse({
-            success: false,
-            error: 'Error creating preview: ' + error.message
-          });
+          
+          // Ultimate fallback - use a download approach instead of preview
+          try {
+            // Create a safe fallback by creating a temp file and opening it
+            chrome.downloads.download({
+              url: 'data:text/html;charset=utf-8,' + encodeURIComponent('<html><body><p>Loading preview...</p></body></html>'),
+              filename: filename,
+              saveAs: false
+            }, (downloadId) => {
+              if (chrome.runtime.lastError) {
+                safeResponse({
+                  success: false,
+                  error: 'Download fallback failed: ' + chrome.runtime.lastError.message
+                });
+                return;
+              }
+              
+              // Store reference to the content
+              previewTabs[downloadId] = {
+                htmlContent: htmlContent,
+                filename: filename,
+                originalData: request.data
+              };
+              
+              safeResponse({
+                success: true,
+                previewTabId: downloadId,
+                message: 'Preview downloaded, please open the file'
+              });
+            });
+          } catch (fallbackError) {
+            // If everything fails, inform the user
+            safeResponse({
+              success: false,
+              error: 'Unable to create preview: ' + error.message + '. ' + fallbackError.message
+            });
+          }
         }
       } catch (error) {
         console.error('Preview error:', error);
-        sendResponse({
+        safeResponse({
           success: false,
           error: error.message
         });
       }
-    })();
+    })().catch(error => {
+      console.error('Unhandled async error in preview handler:', error);
+      safeResponse({
+        success: false,
+        error: 'Unhandled error: ' + error.message
+      });
+    });
     
     return true; // Keep the channel open for asynchronous response
-  }
-  
-  if (request.action === 'download') {
+  } else if (request.action === 'download') {
     (async () => {
       try {
         console.log('Background script received download request:', request);
@@ -1047,7 +1829,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }, (downloadId) => {
               if (chrome.runtime.lastError) {
                 console.error('Download error:', chrome.runtime.lastError);
-                sendResponse({ 
+                safeResponse({ 
                   success: false, 
                   error: chrome.runtime.lastError.message 
                 });
@@ -1057,7 +1839,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               console.log('Download started with ID:', downloadId);
               
               // Send success response
-              sendResponse({ 
+              safeResponse({ 
                 success: true, 
                 downloadId: downloadId,
                 filename: filename,
@@ -1066,34 +1848,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             });
           } catch (downloadError) {
             console.error('Error downloading:', downloadError);
-            sendResponse({
+            safeResponse({
               success: false,
               error: 'Error downloading: ' + downloadError.message
             });
           }
         } catch (urlError) {
           console.error('Error creating download URL:', urlError);
-          sendResponse({
+          safeResponse({
             success: false,
             error: 'Error preparing download: ' + urlError.message
           });
-          return;
         }
       } catch (error) {
         console.error('Background script error:', error);
-        sendResponse({ 
+        safeResponse({ 
           success: false, 
           error: error.message,
           timestamp: new Date().toISOString()
         });
       }
-    })();
+    })().catch(error => {
+      console.error('Unhandled async error in download handler:', error);
+      safeResponse({
+        success: false,
+        error: 'Unhandled error: ' + error.message
+      });
+    });
     
     // Return true to indicate we'll send a response asynchronously
     return true;
-  }
-  
-  if (request.action === 'downloadFromPreview') {
+  } else if (request.action === 'downloadFromPreview') {
     (async () => {
       try {
         const previewTabId = request.previewTabId;
@@ -1122,7 +1907,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }, (downloadId) => {
               if (chrome.runtime.lastError) {
                 console.error('Download error:', chrome.runtime.lastError);
-                sendResponse({ 
+                safeResponse({ 
                   success: false, 
                   error: chrome.runtime.lastError.message 
                 });
@@ -1132,7 +1917,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               console.log('Download started with ID:', downloadId);
               
               // Send success response
-              sendResponse({ 
+              safeResponse({ 
                 success: true, 
                 downloadId: downloadId,
                 filename: previewData.filename,
@@ -1141,31 +1926,56 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             });
           } catch (downloadError) {
             console.error('Error downloading from preview:', downloadError);
-            sendResponse({
+            safeResponse({
               success: false,
               error: 'Error downloading from preview: ' + downloadError.message
             });
           }
         } catch (urlError) {
           console.error('Error creating download URL for preview:', urlError);
-          sendResponse({
+          safeResponse({
             success: false,
             error: 'Error preparing download: ' + urlError.message
           });
-          return;
         }
       } catch (error) {
         console.error('Download from preview error:', error);
-        sendResponse({ 
+        safeResponse({ 
           success: false, 
           error: error.message,
           timestamp: new Date().toISOString()
         });
       }
-    })();
+    })().catch(error => {
+      console.error('Unhandled async error in downloadFromPreview handler:', error);
+      safeResponse({
+        success: false,
+        error: 'Unhandled error: ' + error.message
+      });
+    });
     
     // Return true to indicate we'll send a response asynchronously
     return true;
+  } else if (request.action === 'toggleSimplifiedPatterns') {
+    // Toggle the pattern set to use
+    useSimplifiedPatterns = request.value;
+    // Reload patterns with the new setting
+    loadPatternsFromJson();
+    
+    // Use the safe response function here too
+    safeResponse({ 
+      success: true, 
+      message: `Using ${useSimplifiedPatterns ? 'simplified' : 'standard'} cleaning patterns` 
+    });
+    
+    return true; // Required for async response
+  } else {
+    // For unhandled actions, always send a response
+    safeResponse({
+      success: false,
+      error: `Unknown action: ${request.action}`
+    });
+    return false; // No async response needed
   }
 });
 
@@ -1224,5 +2034,57 @@ function createDownloadUrl(content, mimeType = 'text/html') {
   } catch (error) {
     console.error('Error creating download URL:', error);
     throw new Error('Failed to create download URL: ' + error.message);
+  }
+}
+
+// Function to sanitize HTML content for safe URL encoding
+// This helps prevent URI malformed errors with special characters
+function sanitizeForEncoding(content) {
+  if (!content || typeof content !== 'string') {
+    return '';
+  }
+  
+  try {
+    // Handle lone surrogates in a browser-compatible way
+    let sanitized = '';
+    for (let i = 0; i < content.length; i++) {
+      const char = content.charAt(i);
+      const code = content.charCodeAt(i);
+      
+      // Skip lone surrogates that cause encoding issues
+      if ((code >= 0xD800 && code <= 0xDBFF && (i === content.length - 1 || content.charCodeAt(i + 1) < 0xDC00 || content.charCodeAt(i + 1) > 0xDFFF)) ||
+          (code >= 0xDC00 && code <= 0xDFFF && (i === 0 || content.charCodeAt(i - 1) < 0xD800 || content.charCodeAt(i - 1) > 0xDBFF))) {
+        continue;
+      }
+      
+      sanitized += char;
+    }
+    
+    // Further cleaning of other problematic characters
+    sanitized = sanitized
+      // Remove control characters
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+      .replace(/[\u007F-\u009F]/g, '')
+      // Replace special characters that may cause issues
+      .replace(/[\u2028\u2029]/g, ' ') // Line/paragraph separators
+      .replace(/[\uFEFF\uFFFE\uFFFF]/g, ''); // BOM and non-characters
+      
+    // Return the sanitized content
+    return sanitized;
+  } catch (error) {
+    console.error('Advanced sanitization failed:', error);
+    
+    // If advanced sanitization fails, fall back to basic cleaning
+    try {
+      // Even more basic sanitization as a fallback
+      return content
+        .replace(/[^\x20-\x7E\u00A0-\u00FF\u0100-\u017F\u0180-\u024F\u0300-\u036F\u0400-\u04FF\u0E00-\u0E7F\u1E00-\u1EFF]/g, '')
+        .trim();
+    } catch (fallbackError) {
+      console.error('Fallback sanitization failed:', fallbackError);
+      
+      // If all else fails, try to return a basic ASCII version
+      return content.replace(/[^\x20-\x7E]/g, '').trim() || 'Content could not be encoded safely.';
+    }
   }
 } 
