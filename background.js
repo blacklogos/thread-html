@@ -158,6 +158,7 @@ async function generateHtmlContent(data) {
   let authorName = 'Unknown Author';
   let authorUsername = 'unknown';
   let avatarUrl = '';
+  let originalDate = ''; // Define originalDate variable
   
   if (data.metaData) {
     // Extract author name and username from og:title if available
@@ -179,6 +180,11 @@ async function generateHtmlContent(data) {
     // Get avatar from og:image
     if (data.metaData.ogImage) {
       avatarUrl = data.metaData.ogImage;
+    }
+    
+    // Try to get original post date if available
+    if (data.metaData.postDate) {
+      originalDate = data.metaData.postDate;
     }
   }
   
@@ -1406,126 +1412,51 @@ async function generateHtmlContent(data) {
       }
     }
   </style>
+  
   <script>
-    // Define copyText function in the global scope
+    // Function to copy text to clipboard
     function copyText() {
-      try {
-        // Extract plain text from the article
-        const articleDiv = document.querySelector('.article');
-        if (!articleDiv) {
-          throw new Error('Article content not found');
-        }
-        
-        // Store original posts as they appear in the HTML
-        const originalHTML = articleDiv.innerHTML;
-        
-        // Create a temporary div to work with
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = originalHTML;
-        
-        // Convert all <br> tags to newlines
-        tempDiv.innerHTML = tempDiv.innerHTML.replace(/<br\\s*\\/?>/gi, '\\n');
-        
-        // Find all triple newlines (post separators) and replace with divider
-        const plainText = tempDiv.textContent
-          .replace(/\\n{3,}/g, '\\n\\n---\\n\\n')  // Replace triple+ newlines with divider
-          .replace(/\\n{2,}/g, '\\n\\n')         // Normalize double+ newlines
-          .trim();
-        
-        // Create a temporary textarea element for copying
-        const textarea = document.createElement('textarea');
-        textarea.value = plainText;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        
-        // Select and copy
-        textarea.select();
-        const success = document.execCommand('copy');
-        document.body.removeChild(textarea);
-        
-        if (!success) {
-          throw new Error('Failed to copy using execCommand');
-        }
-        
-        // Show success message
-        const msg = document.createElement('div');
-        msg.className = 'copy-success';
-        msg.textContent = 'Text copied!';
-        document.body.appendChild(msg);
-        setTimeout(() => msg.remove(), 2000);
-        
-      } catch (err) {
-        console.error('Copy failed:', err);
-        
-        // Provide manual copy option as fallback
-        const textarea = document.createElement('textarea');
-        const articleDiv = document.querySelector('.article');
-        
-        // Create a simpler fallback text version
-        let fallbackText = '';
-        if (articleDiv) {
-          // Replace breaks with newlines and strip HTML tags
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = articleDiv.innerHTML.replace(/<br\\s*\\/?>/gi, '\\n');
-          fallbackText = tempDiv.textContent;
+      const article = document.querySelector('.article');
+      if (!article) return;
+      
+      // Get text content and add post separators
+      let text = '';
+      const paragraphs = Array.from(article.childNodes);
+      
+      paragraphs.forEach(node => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          text += node.textContent;
+        } else if (node.nodeName === 'BR') {
+          text += '\\n';
+        } else if (node.nodeName === 'DIV' || node.nodeName === 'P') {
+          text += node.textContent + '\\n\\n';
+        } else if (node.nodeName === 'IMG') {
+          text += '[Image]\\n';
         } else {
-          fallbackText = 'Could not extract text. Please try again.';
+          text += node.textContent;
         }
-        
-        textarea.value = fallbackText;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '50%';
-        textarea.style.top = '50%';
-        textarea.style.transform = 'translate(-50%, -50%)';
-        textarea.style.width = '80%';
-        textarea.style.height = '200px';
-        textarea.style.padding = '10px';
-        textarea.style.zIndex = '9999';
-        textarea.style.border = '2px solid #0095f6';
-        
-        const msg = document.createElement('div');
-        msg.textContent = 'Select all (Ctrl+A) and copy (Ctrl+C)';
-        msg.style.position = 'fixed';
-        msg.style.left = '50%';
-        msg.style.top = 'calc(50% - 110px)';
-        msg.style.transform = 'translateX(-50%)';
-        msg.style.backgroundColor = '#0095f6';
-        msg.style.color = 'white';
-        msg.style.padding = '10px';
-        msg.style.borderRadius = '4px';
-        msg.style.zIndex = '10000';
-        
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = 'Close';
-        closeBtn.style.position = 'fixed';
-        closeBtn.style.left = '50%';
-        closeBtn.style.top = 'calc(50% + 110px)';
-        closeBtn.style.transform = 'translateX(-50%)';
-        closeBtn.style.backgroundColor = '#0095f6';
-        closeBtn.style.color = 'white';
-        closeBtn.style.border = 'none';
-        closeBtn.style.padding = '10px 20px';
-        closeBtn.style.borderRadius = '4px';
-        closeBtn.style.cursor = 'pointer';
-        closeBtn.style.zIndex = '10000';
-        
-        closeBtn.onclick = function() {
-          document.body.removeChild(textarea);
-          document.body.removeChild(msg);
-          document.body.removeChild(closeBtn);
-        };
-        
-        document.body.appendChild(textarea);
-        document.body.appendChild(msg);
-        document.body.appendChild(closeBtn);
-        
-        textarea.focus();
-        textarea.select();
-      }
+      });
+      
+      // Clean up extra line breaks and add post separators
+      text = text.replace(/\\n{3,}/g, '\\n\\n');
+      
+      // Actually copy to clipboard
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          const button = document.querySelector('.copy-button');
+          const originalText = button.textContent;
+          button.textContent = 'Copied!';
+          setTimeout(() => {
+            button.textContent = originalText;
+          }, 2000);
+        })
+        .catch(err => {
+          console.error('Error copying text: ', err);
+          alert('Failed to copy text to clipboard. Your browser may not support this feature.');
+        });
     }
-    
-    // Add interactive editing mode
+
+    // Interactive editing mode
     function enableEditMode() {
       const article = document.querySelector('.article');
       if (!article) return;
@@ -1594,65 +1525,38 @@ async function generateHtmlContent(data) {
       undoBtn.textContent = 'Undo Last Delete';
       undoBtn.className = 'action-button edit-mode-button';
       undoBtn.style.position = 'fixed';
-      undoBtn.style.top = '10px';
+      undoBtn.style.bottom = '10px';
       undoBtn.style.right = '10px';
-      document.body.appendChild(undoBtn);
-      
-      undoBtn.addEventListener('click', function() {
+      undoBtn.onclick = function() {
         if (history.length > 1) {
           history.pop(); // Remove current state
-          currentState = history[history.length - 1]; // Get previous state
-          article.innerHTML = currentState;
+          const prevState = history[history.length - 1];
+          article.innerHTML = prevState;
           updateWordCount();
         }
-      });
+      };
+      document.body.appendChild(undoBtn);
       
-      // Exit edit mode button
+      // Exit button
       const exitBtn = document.createElement('button');
       exitBtn.textContent = 'Exit Edit Mode';
       exitBtn.className = 'action-button edit-mode-button';
       exitBtn.style.position = 'fixed';
-      exitBtn.style.top = '50px';
-      exitBtn.style.right = '10px';
+      exitBtn.style.bottom = '10px';
+      exitBtn.style.right = '180px';
+      exitBtn.onclick = function() {
+        document.body.removeChild(undoBtn);
+        document.body.removeChild(exitBtn);
+        document.body.removeChild(editModeIndicator);
+        
+        // Re-apply final HTML without the editable spans
+        const finalHTML = article.innerHTML;
+        article.innerHTML = finalHTML;
+        
+        // Update word count again
+        updateWordCount();
+      };
       document.body.appendChild(exitBtn);
-      
-      exitBtn.addEventListener('click', function() {
-        // Clean up edit mode
-        document.querySelectorAll('.edit-mode-button').forEach(btn => btn.remove());
-        editModeIndicator.remove();
-        
-        // Convert spans back to plain text
-        const cleanedHTML = article.innerHTML
-          .replace(/<span class="editable-segment( highlight)?">([^<]+)<\/span>/g, "$2");
-        
-        article.innerHTML = cleanedHTML;
-        
-        // Re-enable normal controls
-        document.querySelectorAll('.action-button').forEach(btn => {
-          btn.disabled = false;
-        });
-      });
-      
-      // Disable other buttons during edit mode
-      document.querySelectorAll('.action-button:not(.edit-mode-button)').forEach(btn => {
-        btn.disabled = true;
-      });
-      
-      // Update word count function
-      function updateWordCount() {
-        const wordCountElement = document.querySelector('.thread-info');
-        if (wordCountElement) {
-          const text = article.textContent;
-          const wordCount = text.split(/\s+/).filter(Boolean).length;
-          const readTimeMinutes = Math.max(1, Math.round(wordCount / 200));
-          
-          // Update read time in the UI
-          wordCountElement.innerHTML = wordCountElement.innerHTML.replace(
-            /\d+\s+min\s+read/, 
-            readTimeMinutes + " min read"
-          );
-        }
-      }
       
       // Add CSS for edit mode
       const style = document.createElement('style');
@@ -1685,89 +1589,119 @@ async function generateHtmlContent(data) {
         '  box-shadow: 0 2px 5px rgba(0,0,0,0.2);' +
         '}';
       document.head.appendChild(style);
-    }
-    
-    // Function to save as Markdown
-    function saveAsMarkdown() {
-      try {
-        const article = document.querySelector('.article');
-        const authorName = document.querySelector('.author-name').textContent;
-        const authorUsername = document.querySelector('.author-username').textContent;
-        
-        // Convert HTML to Markdown
-        let markdown = "# " + authorName + "'s Thread\n\n";
-        markdown += "> Author: " + authorUsername + "\n\n";
-        
-        // Process the content, replacing HTML with Markdown syntax
-        let content = article.innerHTML
-          .replace(/<br>/g, '\n')
-          .replace(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g, '[$2]($1)')
-          .replace(/<img[^>]*src="([^"]*)"[^>]*>/g, '![]($1)')
-          .replace(/<[^>]+>/g, '') // Remove any remaining HTML tags
-          .trim();
-        
-        markdown += content + '\n\n';
-        markdown += '---\n';
-        markdown += "Source: [Threads](" + window.location.href + ")\n";
-        
-        // Create download
-        const blob = new Blob([markdown], { type: 'text/markdown' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = document.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.md';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        
-        // Show success message
-        const msg = document.createElement('div');
-        msg.className = 'copy-success';
-        msg.textContent = 'Markdown file downloaded!';
-        document.body.appendChild(msg);
-        setTimeout(() => msg.remove(), 2000);
-        
-      } catch (err) {
-        console.error('Markdown export failed:', err);
-        alert('Failed to export as Markdown: ' + err.message);
+      
+      function updateWordCount() {
+        const wordCountElement = document.querySelector('.thread-info');
+        if (wordCountElement) {
+          const text = article.textContent || '';
+          const wordCount = text.split(/\\s+/).filter(word => word.length > 0).length;
+          const readTime = Math.max(1, Math.round(wordCount / 200));
+          
+          wordCountElement.innerHTML = wordCountElement.innerHTML.replace(
+            /\\d+\\s+words/, 
+            wordCount + " words"
+          );
+          
+          wordCountElement.innerHTML = wordCountElement.innerHTML.replace(
+            /\\d+\\s+min\\s+read/, 
+            readTime + " min read"
+          );
+        }
       }
     }
     
-    // Handle image loading on DOMContentLoaded
+    // Function to save content as markdown
+    function saveAsMarkdown() {
+      const article = document.querySelector('.article');
+      if (!article) return;
+      
+      // Create a simplified HTML to convert to markdown
+      let html = article.innerHTML;
+      
+      // Preprocess HTML to make markdown conversion easier
+      html = html.replace(/<br>/g, '\\n');
+      html = html.replace(/<div[^>]*>(.*?)<\\/div>/g, '$1\\n\\n');
+      html = html.replace(/<p[^>]*>(.*?)<\\/p>/g, '$1\\n\\n');
+      html = html.replace(/<b>(.*?)<\\/b>/gi, '**$1**');
+      html = html.replace(/<strong>(.*?)<\\/strong>/gi, '**$1**');
+      html = html.replace(/<i>(.*?)<\\/i>/gi, '*$1*');
+      html = html.replace(/<em>(.*?)<\\/em>/gi, '*$1*');
+      
+      // Convert links
+      html = html.replace(/<a[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\\/a>/gi, '[$2]($1)');
+      
+      // Convert images
+      html = html.replace(/<img[^>]*src=["']([^"']*)["'][^>]*>/gi, '![]($1)');
+      
+      // Remove remaining HTML tags
+      html = html.replace(/<[^>]*>/g, '');
+      
+      // Decode HTML entities
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+      let markdown = temp.textContent;
+      
+      // Add post separator
+      markdown = markdown.replace(/\\n{3,}/g, '\\n\\n');
+      
+      // Clean up
+      markdown = markdown.trim();
+      
+      // Add metadata at the top
+      const authorName = document.querySelector('.author-name')?.textContent || 'Unknown Author';
+      const authorUsername = document.querySelector('.author-username')?.textContent || '@unknown';
+      const threadInfo = document.querySelector('.thread-info')?.textContent || '';
+      
+      const header = 
+        \`# Thread by \${authorName} (\${authorUsername})\\n\\n\` +
+        \`\${threadInfo}\\n\\n\` +
+        \`---\\n\\n\`;
+      
+      markdown = header + markdown;
+      
+      // Create blob and download
+      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // Get timestamp for filename
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/:/g, '-').replace(/\\..+/, '');
+      
+      a.download = \`thread_\${authorUsername.replace('@', '')}_\${timestamp}.md\`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+    }
+    
+    // Wait for DOM to load before initializing any scripts
     document.addEventListener('DOMContentLoaded', function() {
+      // Avatar fallback logic
       const avatarImg = document.querySelector('.author-image');
       const initials = document.querySelector('.author-initials');
       
       // When image loads successfully
-      avatarImg.addEventListener('load', function() {
-        // Check if the image actually loaded with content
-        if (avatarImg.naturalWidth > 0 && avatarImg.naturalHeight > 0) {
-          initials.style.display = 'none'; // Hide initials
-        } else {
-          avatarImg.style.display = 'none'; // Hide broken image
-        }
-      });
-      
-      // When image fails to load
-      avatarImg.addEventListener('error', function() {
-        avatarImg.style.display = 'none'; // Hide broken image
-      });
-      
-      // Add the expanded action buttons including edit mode and markdown export
-      const actionButtons = document.querySelector('.action-buttons');
-      if (actionButtons) {
-        const editButton = document.createElement('button');
-        editButton.textContent = 'Edit Mode';
-        editButton.className = 'action-button';
-        editButton.onclick = enableEditMode;
-        actionButtons.appendChild(editButton);
+      if (avatarImg) {
+        avatarImg.addEventListener('load', function() {
+          // Check if the image actually loaded with content
+          if (avatarImg.naturalWidth > 0 && avatarImg.naturalHeight > 0) {
+            if (initials) initials.style.display = 'none'; // Hide initials
+          } else {
+            avatarImg.style.display = 'none'; // Hide broken image
+          }
+        });
         
-        const markdownButton = document.createElement('button');
-        markdownButton.textContent = 'Save as MD';
-        markdownButton.className = 'action-button';
-        markdownButton.onclick = saveAsMarkdown;
-        actionButtons.appendChild(markdownButton);
+        // When image fails to load
+        avatarImg.addEventListener('error', function() {
+          avatarImg.style.display = 'none'; // Hide broken image
+        });
       }
     });
   </script>
@@ -1816,53 +1750,21 @@ async function generateHtmlContent(data) {
           return `<a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ${url}</span></a>`;
         }
       })
-      .replace(/\[(https?:\/\/[^\]]+)\]/g, (match, url) => {
-        // Extract domain name for display
-        let domain = '';
-        try {
-          domain = new URL(url).hostname.replace(/^www\./, '');
-        } catch (e) {
-          domain = 'external link';
-        }
-        
-        return `<a href="${url}" class="post-link external" target="_blank" rel="noopener noreferrer">
-          <span class="link-domain">${domain}</span>
-          <span class="link-text">${url}</span>
-        </a>`;
-      })}</div>
+    }
+    </div>
     
     <div class="action-buttons">
-      <button onclick="copyText()" class="action-button">Copy Text</button>
-      <button onclick="window.print()" class="action-button">Save PDF</button>
-      <button onclick="enableEditMode()" class="action-button">Edit Mode</button>
-      <button onclick="saveAsMarkdown()" class="action-button">Save MD</button>
+      <button class="action-button copy-button" onclick="copyText()">Copy Text</button>
+      <button class="action-button" onclick="window.print()">Save PDF</button>
+      <button class="action-button" onclick="enableEditMode()">Edit Mode</button>
+      <button class="action-button" onclick="saveAsMarkdown()">Save as MD</button>
     </div>
     
-    <div class="footer">
+    <footer>
       <p>Thread by ${authorName} (${authorUsername}) on ${originalDate ? originalDate : 'Threads'}</p>
-      <p>Exported on ${new Date().toLocaleDateString()} • <a href="${threadUrl}" target="_blank" rel="noopener noreferrer">Original thread</a></p>
-    </div>
+      <p>Exported using Thread HTML Extension</p>
+    </footer>
   </div>
-  
-  <script>
-    // Function to copy text to clipboard
-    function copyText() {
-      const articleText = document.querySelector('.article').innerText;
-      navigator.clipboard.writeText(articleText)
-        .then(() => {
-          const msg = document.createElement('div');
-          msg.className = 'copy-success';
-          msg.textContent = 'Text copied to clipboard!';
-          document.body.appendChild(msg);
-          setTimeout(() => msg.remove(), 2000);
-        })
-        .catch(err => {
-          console.error('Error copying text: ', err);
-          alert('Failed to copy text: ' + err);
-        });
-    }
-  </script>
-  <script src="interactive.js"></script>
 </body>
 </html>`;
 
