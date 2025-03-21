@@ -71,6 +71,9 @@ loadPatternsFromJson();
 // Track active preview tabs
 let previewTabs = {};
 
+// Add tracking for blob URLs
+let createdBlobUrls = [];
+
 // Function to fetch an image and convert it to base64
 async function fetchImageAsBase64(url) {
   try {
@@ -739,12 +742,12 @@ async function generateHtmlContent(data) {
         tempDiv.innerHTML = originalHTML;
         
         // Convert all <br> tags to newlines
-        tempDiv.innerHTML = tempDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+        tempDiv.innerHTML = tempDiv.innerHTML.replace(/<br\\s*\\/?>/gi, '\\n');
         
         // Find all triple newlines (post separators) and replace with divider
         const plainText = tempDiv.textContent
-          .replace(/\n{3,}/g, '\n\n---\n\n')  // Replace triple+ newlines with divider
-          .replace(/\n{2,}/g, '\n\n')         // Normalize double+ newlines
+          .replace(/\\n{3,}/g, '\\n\\n---\\n\\n')  // Replace triple+ newlines with divider
+          .replace(/\\n{2,}/g, '\\n\\n')         // Normalize double+ newlines
           .trim();
         
         // Create a temporary textarea element for copying
@@ -782,7 +785,7 @@ async function generateHtmlContent(data) {
         if (articleDiv) {
           // Replace breaks with newlines and strip HTML tags
           const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = articleDiv.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+          tempDiv.innerHTML = articleDiv.innerHTML.replace(/<br\\s*\\/?>/gi, '\\n');
           fallbackText = tempDiv.textContent;
         } else {
           fallbackText = 'Could not extract text. Please try again.';
@@ -953,25 +956,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Generate HTML content
         const { htmlContent, filename } = await generateHtmlContent(request.data);
         
-        // Create a data URL for the preview
-        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
-        
-        // Create a new tab with the preview
-        chrome.tabs.create({ url: dataUrl, active: true }, (tab) => {
-          // Store reference to this tab for download functionality
-          previewTabs[tab.id] = {
-            htmlContent: htmlContent,
-            filename: filename,
-            originalData: request.data
-          };
+        // Create a URL for the preview using safer method
+        let previewUrl;
+        try {
+          // Always prefer data URL for preview when possible for better compatibility
+          if (htmlContent.length < 2000000) { // 2MB limit for preview
+            previewUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+          } else {
+            // For very large content, we'll need to use a Blob URL
+            previewUrl = createBlobUrl(htmlContent);
+          }
           
-          // Send a message to the popup that preview is ready
-          sendResponse({
-            success: true,
-            previewTabId: tab.id,
-            message: 'Preview opened in new tab'
+          // Create a new tab with the preview
+          chrome.tabs.create({ url: previewUrl, active: true }, (tab) => {
+            // Store reference to this tab for download functionality
+            previewTabs[tab.id] = {
+              htmlContent: htmlContent,
+              filename: filename,
+              originalData: request.data
+            };
+            
+            // Send a message to the popup that preview is ready
+            sendResponse({
+              success: true,
+              previewTabId: tab.id,
+              message: 'Preview opened in new tab'
+            });
           });
-        });
+        } catch (error) {
+          console.error('Preview URL creation error:', error);
+          sendResponse({
+            success: false,
+            error: 'Error creating preview: ' + error.message
+          });
+        }
       } catch (error) {
         console.error('Preview error:', error);
         sendResponse({
@@ -1005,35 +1023,62 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           throw new Error('No data provided for download');
         }
         
-        // Create a data URL for the download
-        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+        // Validate and sanitize HTML content to prevent URI malformed errors
+        if (!htmlContent || typeof htmlContent !== 'string') {
+          throw new Error('Invalid HTML content generated');
+        }
         
-        console.log('Starting download with filename:', filename);
+        // Limit content size if it's too large (helps prevent URI too large errors)
+        if (htmlContent.length > 10000000) { // 10MB limit
+          console.warn('HTML content is very large, this may cause issues with data URLs');
+          // Consider adding a warning or fallback mechanism for very large content
+        }
         
-        chrome.downloads.download({
-          url: dataUrl,
-          filename: filename,
-          saveAs: true
-        }, (downloadId) => {
-          if (chrome.runtime.lastError) {
-            console.error('Download error:', chrome.runtime.lastError);
-            sendResponse({ 
-              success: false, 
-              error: chrome.runtime.lastError.message 
+        // Create a URL for the download using our safer function
+        try {
+          const downloadUrl = createDownloadUrl(htmlContent);
+          console.log('Starting download with filename:', filename);
+          
+          try {
+            chrome.downloads.download({
+              url: downloadUrl,
+              filename: filename,
+              saveAs: true
+            }, (downloadId) => {
+              if (chrome.runtime.lastError) {
+                console.error('Download error:', chrome.runtime.lastError);
+                sendResponse({ 
+                  success: false, 
+                  error: chrome.runtime.lastError.message 
+                });
+                return;
+              }
+              
+              console.log('Download started with ID:', downloadId);
+              
+              // Send success response
+              sendResponse({ 
+                success: true, 
+                downloadId: downloadId,
+                filename: filename,
+                timestamp: new Date().toISOString()
+              });
             });
-            return;
+          } catch (downloadError) {
+            console.error('Error downloading:', downloadError);
+            sendResponse({
+              success: false,
+              error: 'Error downloading: ' + downloadError.message
+            });
           }
-          
-          console.log('Download started with ID:', downloadId);
-          
-          // Send success response
-          sendResponse({ 
-            success: true, 
-            downloadId: downloadId,
-            filename: filename,
-            timestamp: new Date().toISOString()
+        } catch (urlError) {
+          console.error('Error creating download URL:', urlError);
+          sendResponse({
+            success: false,
+            error: 'Error preparing download: ' + urlError.message
           });
-        });
+          return;
+        }
       } catch (error) {
         console.error('Background script error:', error);
         sendResponse({ 
@@ -1059,35 +1104,56 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         
         const previewData = previewTabs[previewTabId];
         
-        // Create data URL for the download
-        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(previewData.htmlContent);
+        // Validate content before creating data URL
+        if (!previewData.htmlContent || typeof previewData.htmlContent !== 'string') {
+          throw new Error('Invalid HTML content in preview data');
+        }
         
-        console.log('Starting download from preview with filename:', previewData.filename);
-        
-        chrome.downloads.download({
-          url: dataUrl,
-          filename: previewData.filename,
-          saveAs: true
-        }, (downloadId) => {
-          if (chrome.runtime.lastError) {
-            console.error('Download error:', chrome.runtime.lastError);
-            sendResponse({ 
-              success: false, 
-              error: chrome.runtime.lastError.message 
+        // Create a URL for the download using our safer function
+        try {
+          const downloadUrl = createDownloadUrl(previewData.htmlContent);
+          console.log('Starting download from preview with filename:', previewData.filename);
+          
+          try {
+            chrome.downloads.download({
+              url: downloadUrl,
+              filename: previewData.filename,
+              saveAs: true
+            }, (downloadId) => {
+              if (chrome.runtime.lastError) {
+                console.error('Download error:', chrome.runtime.lastError);
+                sendResponse({ 
+                  success: false, 
+                  error: chrome.runtime.lastError.message 
+                });
+                return;
+              }
+              
+              console.log('Download started with ID:', downloadId);
+              
+              // Send success response
+              sendResponse({ 
+                success: true, 
+                downloadId: downloadId,
+                filename: previewData.filename,
+                timestamp: new Date().toISOString()
+              });
             });
-            return;
+          } catch (downloadError) {
+            console.error('Error downloading from preview:', downloadError);
+            sendResponse({
+              success: false,
+              error: 'Error downloading from preview: ' + downloadError.message
+            });
           }
-          
-          console.log('Download started with ID:', downloadId);
-          
-          // Send success response
-          sendResponse({ 
-            success: true, 
-            downloadId: downloadId,
-            filename: previewData.filename,
-            timestamp: new Date().toISOString()
+        } catch (urlError) {
+          console.error('Error creating download URL for preview:', urlError);
+          sendResponse({
+            success: false,
+            error: 'Error preparing download: ' + urlError.message
           });
-        });
+          return;
+        }
       } catch (error) {
         console.error('Download from preview error:', error);
         sendResponse({ 
@@ -1103,10 +1169,60 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Listen for tab close events to clean up preview tabs
+// Listen for tab close events to clean up preview tabs and blob URLs
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (previewTabs[tabId]) {
     console.log('Preview tab closed, cleaning up:', tabId);
     delete previewTabs[tabId];
   }
-}); 
+  
+  // Clean up any blob URLs when downloads complete or after some time
+  if (createdBlobUrls.length > 0) {
+    console.log(`Cleaning up ${createdBlobUrls.length} blob URLs`);
+    createdBlobUrls.forEach(url => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('Error revoking blob URL:', error);
+      }
+    });
+    createdBlobUrls = [];
+  }
+});
+
+// Function to create a Blob download URL as an alternative to data URL
+// This helps avoid "URI malformed" errors with large content
+function createBlobUrl(content, mimeType = 'text/html') {
+  try {
+    // Create a Blob containing the HTML content
+    const blob = new Blob([content], { type: mimeType + ';charset=utf-8' });
+    
+    // Create a URL for the Blob
+    const blobUrl = URL.createObjectURL(blob);
+    
+    // Track this URL for cleanup
+    createdBlobUrls.push(blobUrl);
+    
+    return blobUrl;
+  } catch (error) {
+    console.error('Error creating blob URL:', error);
+    throw new Error('Failed to create download URL: ' + error.message);
+  }
+}
+
+// Function to safely generate a data URL or fallback to Blob URL for large content
+function createDownloadUrl(content, mimeType = 'text/html') {
+  try {
+    // For smaller content, use data URL which is more compatible
+    if (content.length < 1000000) { // 1MB threshold
+      return 'data:' + mimeType + ';charset=utf-8,' + encodeURIComponent(content);
+    } else {
+      // For larger content, use Blob URL to avoid URI length limits
+      console.log('Content is large, using Blob URL instead of data URL');
+      return createBlobUrl(content, mimeType);
+    }
+  } catch (error) {
+    console.error('Error creating download URL:', error);
+    throw new Error('Failed to create download URL: ' + error.message);
+  }
+} 
