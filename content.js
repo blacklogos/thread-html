@@ -739,15 +739,24 @@ async function extractThreadData() {
     let authorDisplayName = authorUsernameFromPosts;
     let authorUsername = authorUsernameFromPosts;
     
+    // Extract metadata from meta tags
+    const metaData = {
+      ogTitle: '',
+      ogDescription: '',
+      ogImage: '',
+      postDate: ''
+    };
+    
     // Try to get additional information from meta tags
     try {
-      const metaElement = document.querySelector('meta[property="og:title"]');
-      if (metaElement && metaElement.content) {
-        const metaContent = metaElement.content;
-        console.log('Meta content for author display name:', metaContent);
+      // Get Open Graph title
+      const metaTitleElement = document.querySelector('meta[property="og:title"]');
+      if (metaTitleElement && metaTitleElement.content) {
+        metaData.ogTitle = metaTitleElement.content;
+        console.log('Meta title:', metaData.ogTitle);
         
         // Try to extract display name
-        const fullNameMatch = metaContent.match(/(.*?)\s+\(@(\w+)\)/);
+        const fullNameMatch = metaData.ogTitle.match(/(.*?)\s+\(@(\w+)\)/);
         if (fullNameMatch) {
           authorDisplayName = fullNameMatch[1].trim();
           // If we also found a username in the meta tag and it seems valid, use it
@@ -756,12 +765,79 @@ async function extractThreadData() {
           }
         } else {
           // Try other patterns
-          const nameMatch = metaContent.match(/([\w\s]+)'s post on Threads/);
+          const nameMatch = metaData.ogTitle.match(/([\w\s]+)'s post on Threads/);
           if (nameMatch) {
             authorDisplayName = nameMatch[1].trim();
           }
         }
       }
+      
+      // Get Open Graph description
+      const metaDescElement = document.querySelector('meta[property="og:description"]');
+      if (metaDescElement && metaDescElement.content) {
+        metaData.ogDescription = metaDescElement.content;
+      }
+      
+      // Get Open Graph image
+      const metaImageElement = document.querySelector('meta[property="og:image"]');
+      if (metaImageElement && metaImageElement.content) {
+        metaData.ogImage = metaImageElement.content;
+      }
+      
+      // Try to extract post date from the page
+      // Method 1: Look for time elements
+      const timeElements = document.querySelectorAll('time');
+      if (timeElements.length > 0) {
+        for (const timeEl of timeElements) {
+          if (timeEl.dateTime) {
+            try {
+              const dateObj = new Date(timeEl.dateTime);
+              if (!isNaN(dateObj.getTime())) {
+                metaData.postDate = dateObj.toLocaleDateString('en-US', { 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                });
+                break;
+              }
+            } catch (e) {
+              console.error('Error parsing date from time element:', e);
+            }
+          } else if (timeEl.textContent) {
+            // Sometimes the date is in the text content without a datetime attribute
+            metaData.postDate = timeEl.textContent.trim();
+            break;
+          }
+        }
+      }
+      
+      // Method 2: If we still don't have a date, look for typical date patterns in text nodes
+      if (!metaData.postDate) {
+        const datePatterns = [
+          /(\w+\s+\d{1,2},\s+\d{4})/i,  // January 1, 2023
+          /(\d{1,2}\s+\w+\s+\d{4})/i,    // 1 January 2023
+          /(\d{1,2}\/\d{1,2}\/\d{4})/i   // 01/01/2023
+        ];
+        
+        const textNodes = [];
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let node;
+        while (node = walker.nextNode()) {
+          textNodes.push(node.textContent.trim());
+        }
+        
+        for (const pattern of datePatterns) {
+          for (const text of textNodes) {
+            const match = text.match(pattern);
+            if (match && match[1]) {
+              metaData.postDate = match[1];
+              break;
+            }
+          }
+          if (metaData.postDate) break;
+        }
+      }
+      
     } catch (error) {
       console.error('Error extracting additional author info:', error);
       // Continue with what we have
@@ -774,7 +850,7 @@ async function extractThreadData() {
         displayName: authorDisplayName,
         url: `https://www.threads.net/@${authorUsername}`
       },
-      url
+      metaData
     });
     
     return {
@@ -784,7 +860,8 @@ async function extractThreadData() {
         name: authorUsername,
         displayName: authorDisplayName,
         url: `https://www.threads.net/@${authorUsername}`
-      }
+      },
+      metaData
     };
   } catch (error) {
     console.error('Error extracting thread data:', error);
