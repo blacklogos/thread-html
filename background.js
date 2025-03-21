@@ -1656,35 +1656,34 @@ async function generateHtmlContent(data) {
       
       // Add CSS for edit mode
       const style = document.createElement('style');
-      style.textContent = `
-        .editable-segment {
-          cursor: pointer;
-          display: inline;
-          transition: background-color 0.2s ease;
-        }
-        
-        .highlight {
-          background-color: #ffffa0;
-        }
-        
-        .edit-mode-indicator {
-          position: fixed;
-          top: 10px;
-          left: 10px;
-          background-color: #007bff;
-          color: white;
-          padding: 8px 12px;
-          border-radius: 4px;
-          z-index: 1000;
-          font-size: 14px;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-        
-        .edit-mode-button {
-          z-index: 1000;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-      `;
+      style.textContent = 
+        '.editable-segment {' +
+        '  cursor: pointer;' +
+        '  display: inline;' +
+        '  transition: background-color 0.2s ease;' +
+        '}' +
+        '' +
+        '.highlight {' +
+        '  background-color: #ffffa0;' +
+        '}' +
+        '' +
+        '.edit-mode-indicator {' +
+        '  position: fixed;' +
+        '  top: 10px;' +
+        '  left: 10px;' +
+        '  background-color: #007bff;' +
+        '  color: white;' +
+        '  padding: 8px 12px;' +
+        '  border-radius: 4px;' +
+        '  z-index: 1000;' +
+        '  font-size: 14px;' +
+        '  box-shadow: 0 2px 5px rgba(0,0,0,0.2);' +
+        '}' +
+        '' +
+        '.edit-mode-button {' +
+        '  z-index: 1000;' +
+        '  box-shadow: 0 2px 5px rgba(0,0,0,0.2);' +
+        '}';
       document.head.appendChild(style);
     }
     
@@ -1873,7 +1872,7 @@ async function generateHtmlContent(data) {
     sanitizedAuthorUsername,
     timestamp
   };
-}
+} // End of generateHtmlContent function
 
 // Listen for messages from the extension
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
