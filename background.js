@@ -1774,73 +1774,96 @@ async function generateHtmlContent(data) {
   </script>
 </head>
 <body>
-  <div class="author-header">
-    <div class="author-image-container">
-      <div class="author-initials">${authorInitials}</div>
-      <img src="${base64Avatar}" alt="${authorName}" class="author-image">
-    </div>
-    <div class="author-info">
-      <div class="author-name">${authorName}</div>
-      <div class="author-username">${authorUsername}</div>
-      <div class="thread-info">
-        ${readTimeMinutes} min read • 
-        <a href="${threadUrl}" target="_blank">View on Threads</a>
+  <div class="container">
+    <div class="author-header">
+      <div class="author-image-container">
+        <img src="${avatarUrl}" alt="${authorName}'s profile picture" class="author-image">
+        <div class="author-initials">${authorInitials}</div>
       </div>
-      <div class="action-buttons">
-        <button onclick="copyText()" class="action-button">Copy Text</button>
-        <button onclick="window.print()" class="action-button">Save PDF</button>
-        <button onclick="enableEditMode()" class="action-button">Edit Mode</button>
-        <button onclick="saveAsMarkdown()" class="action-button">Save MD</button>
+      <div class="author-info">
+        <div class="author-name">${authorName}</div>
+        <div class="author-username">${authorUsername}</div>
+        <div class="thread-info">${totalWords} words · ${readTimeMinutes} min read${originalDate ? ' · ' + originalDate : ''}</div>
       </div>
     </div>
-  </div>
-  
-  <div class="article">${threadContent
-    .replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy" onerror="this.src=\'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f5bc.png\'; this.style.width=\'72px\'; this.style.height=\'72px\';">')
-    .replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, (match, url) => {
-      // Extract video ID for YouTube embeds
-      let videoId = '';
-      if (url.includes('youtu.be/')) {
-        videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
-      } else if (url.includes('youtube.com/watch')) {
-        const urlObj = new URL(url);
-        videoId = urlObj.searchParams.get('v');
-      }
-      
-      if (videoId) {
-        // Return YouTube thumbnail with link as fallback
-        return `
-          <div class="youtube-container">
-            <a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer">
-              <div class="youtube-thumbnail">
-                <img src="https://img.youtube.com/vi/${videoId}/0.jpg" alt="YouTube Thumbnail" loading="lazy" 
-                     onerror="this.src='https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/25b6.png'; this.style.width='72px'; this.style.height='72px';">
-                <div class="youtube-play-icon">▶</div>
-              </div>
-              <span class="link-text">Watch on YouTube</span>
-            </a>
-          </div>`;
-      } else {
-        // Fallback to regular link
-        return `<a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ${url}</span></a>`;
-      }
-    })
-    .replace(/\[Link: (https?:\/\/[^\]]+)\]/g, (match, url) => {
-      try {
-        const hostname = new URL(url).hostname;
+    
+    <div class="article">${threadContent
+      .replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy" onerror="this.src=\'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f5bc.png\'; this.style.width=\'72px\'; this.style.height=\'72px\';">')
+      .replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, (match, url) => {
+        // Extract video ID for YouTube embeds
+        let videoId = '';
+        if (url.includes('youtu.be/')) {
+          videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
+        } else if (url.includes('youtube.com/watch')) {
+          const urlObj = new URL(url);
+          videoId = urlObj.searchParams.get('v');
+        }
+        
+        if (videoId) {
+          // Return YouTube thumbnail with link as fallback
+          return `
+            <div class="youtube-container">
+              <a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer">
+                <div class="youtube-thumbnail">
+                  <img src="https://img.youtube.com/vi/${videoId}/0.jpg" alt="YouTube Thumbnail" loading="lazy" 
+                       onerror="this.src='https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/25b6.png'; this.style.width='72px'; this.style.height='72px';">
+                  <div class="youtube-play-icon">▶</div>
+                </div>
+                <span class="link-text">Watch on YouTube</span>
+              </a>
+            </div>`;
+        } else {
+          // Fallback to regular link
+          return `<a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ${url}</span></a>`;
+        }
+      })
+      .replace(/\[(https?:\/\/[^\]]+)\]/g, (match, url) => {
+        // Extract domain name for display
+        let domain = '';
+        try {
+          domain = new URL(url).hostname.replace(/^www\./, '');
+        } catch (e) {
+          domain = 'external link';
+        }
+        
         return `<a href="${url}" class="post-link external" target="_blank" rel="noopener noreferrer">
-                <span class="link-domain">${hostname}</span>
-                <span class="link-text">${url}</span>
-               </a>`;
-      } catch (e) {
-        return `<a href="${url}" class="post-link external" target="_blank" rel="noopener noreferrer"><span class="link-text">${url}</span></a>`;
-      }
-    })
-    .replace(/@(\w+)/g, '<a href="https://www.threads.net/@$1" target="_blank">@$1</a>')}</div>
-  
-  <div class="footer">
-    <p>Source: <a href="${threadUrl}" target="_blank">Threads</a></p>
+          <span class="link-domain">${domain}</span>
+          <span class="link-text">${url}</span>
+        </a>`;
+      })}</div>
+    
+    <div class="action-buttons">
+      <button onclick="copyText()" class="action-button">Copy Text</button>
+      <button onclick="window.print()" class="action-button">Save PDF</button>
+      <button onclick="enableEditMode()" class="action-button">Edit Mode</button>
+      <button onclick="saveAsMarkdown()" class="action-button">Save MD</button>
+    </div>
+    
+    <div class="footer">
+      <p>Thread by ${authorName} (${authorUsername}) on ${originalDate ? originalDate : 'Threads'}</p>
+      <p>Exported on ${new Date().toLocaleDateString()} • <a href="${threadUrl}" target="_blank" rel="noopener noreferrer">Original thread</a></p>
+    </div>
   </div>
+  
+  <script>
+    // Function to copy text to clipboard
+    function copyText() {
+      const articleText = document.querySelector('.article').innerText;
+      navigator.clipboard.writeText(articleText)
+        .then(() => {
+          const msg = document.createElement('div');
+          msg.className = 'copy-success';
+          msg.textContent = 'Text copied to clipboard!';
+          document.body.appendChild(msg);
+          setTimeout(() => msg.remove(), 2000);
+        })
+        .catch(err => {
+          console.error('Error copying text: ', err);
+          alert('Failed to copy text: ' + err);
+        });
+    }
+  </script>
+  <script src="interactive.js"></script>
 </body>
 </html>`;
 
