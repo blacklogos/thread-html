@@ -1427,138 +1427,33 @@ async function generateHtmlContent(data) {
         if (node.nodeType === Node.TEXT_NODE) {
           text += node.textContent;
         } else if (node.nodeName === 'BR') {
-          text += '\n';
+          text += '\\n';
         } else if (node.nodeName === 'DIV' || node.nodeName === 'P') {
-          text += node.textContent + '\n\n';
+          text += node.textContent + '\\n\\n';
         } else if (node.nodeName === 'IMG') {
-          text += '[Image]\n';
+          text += '[Image]\\n';
         } else {
           text += node.textContent;
         }
       });
       
       // Clean up extra line breaks and add post separators
-      text = text.replace(/\n{3,}/g, '\n\n');
+      text = text.replace(/\\n{3,}/g, '\\n\\n');
       
-      // Try multiple clipboard methods for better compatibility
-      try {
-        // Method 1: Modern clipboard API
-        navigator.clipboard.writeText(text)
-          .then(() => {
-            showCopySuccess();
-          })
-          .catch(err => {
-            console.error('Clipboard API failed:', err);
-            // Fallback to other methods
-            copyTextFallback(text);
-          });
-      } catch (e) {
-        console.error('Error using Clipboard API:', e);
-        // Fallback to other methods
-        copyTextFallback(text);
-      }
-      
-      function copyTextFallback(textToCopy) {
-        try {
-          // Method 2: execCommand method (older browsers)
-          const textArea = document.createElement('textarea');
-          textArea.value = textToCopy;
-          textArea.style.position = 'fixed';  // Avoid scrolling to bottom
-          textArea.style.opacity = '0';
-          document.body.appendChild(textArea);
-          textArea.focus();
-          textArea.select();
-          
-          const successful = document.execCommand('copy');
-          document.body.removeChild(textArea);
-          
-          if (successful) {
-            showCopySuccess();
-          } else {
-            showManualCopyDialog(textToCopy);
-          }
-        } catch (err) {
-          console.error('execCommand failed:', err);
-          showManualCopyDialog(textToCopy);
-        }
-      }
-      
-      function showCopySuccess() {
-        const button = document.querySelector('.copy-button');
-        const originalText = button.textContent;
-        button.textContent = 'Copied!';
-        setTimeout(() => {
-          button.textContent = originalText;
-        }, 2000);
-      }
-      
-      function showManualCopyDialog(textToCopy) {
-        // Create a modal dialog for manual copying
-        const overlay = document.createElement('div');
-        overlay.style.position = 'fixed';
-        overlay.style.top = '0';
-        overlay.style.left = '0';
-        overlay.style.width = '100%';
-        overlay.style.height = '100%';
-        overlay.style.backgroundColor = 'rgba(0,0,0,0.7)';
-        overlay.style.zIndex = '9998';
-        overlay.style.display = 'flex';
-        overlay.style.justifyContent = 'center';
-        overlay.style.alignItems = 'center';
-        overlay.style.flexDirection = 'column';
-        
-        const modal = document.createElement('div');
-        modal.style.backgroundColor = 'white';
-        modal.style.padding = '20px';
-        modal.style.borderRadius = '5px';
-        modal.style.width = '80%';
-        modal.style.maxWidth = '600px';
-        modal.style.maxHeight = '80%';
-        modal.style.display = 'flex';
-        modal.style.flexDirection = 'column';
-        modal.style.gap = '10px';
-        
-        const title = document.createElement('h3');
-        title.textContent = 'Copy Text Manually';
-        title.style.margin = '0 0 10px 0';
-        
-        const instructions = document.createElement('p');
-        instructions.textContent = 'Your browser blocked automatic copying. Please use Ctrl+C or Command+C to copy this text:';
-        instructions.style.margin = '0';
-        
-        const textarea = document.createElement('textarea');
-        textarea.value = textToCopy;
-        textarea.style.width = '100%';
-        textarea.style.height = '150px';
-        textarea.style.marginBottom = '10px';
-        textarea.style.padding = '5px';
-        textarea.readOnly = true;
-        
-        const closeButton = document.createElement('button');
-        closeButton.textContent = 'Close';
-        closeButton.style.padding = '8px 15px';
-        closeButton.style.cursor = 'pointer';
-        closeButton.style.backgroundColor = '#0095f6';
-        closeButton.style.color = 'white';
-        closeButton.style.border = 'none';
-        closeButton.style.borderRadius = '4px';
-        closeButton.style.alignSelf = 'flex-end';
-        
-        closeButton.onclick = function() {
-          document.body.removeChild(overlay);
-        };
-        
-        modal.appendChild(title);
-        modal.appendChild(instructions);
-        modal.appendChild(textarea);
-        modal.appendChild(closeButton);
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-        
-        // Select the text automatically
-        textarea.focus();
-        textarea.select();
-      }
+      // Actually copy to clipboard
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          const button = document.querySelector('.copy-button');
+          const originalText = button.textContent;
+          button.textContent = 'Copied!';
+          setTimeout(() => {
+            button.textContent = originalText;
+          }, 2000);
+        })
+        .catch(err => {
+          console.error('Error copying text: ', err);
+          alert('Failed to copy text to clipboard. Your browser may not support this feature.');
+        });
     }
 
     // Interactive editing mode
