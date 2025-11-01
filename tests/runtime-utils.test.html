@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>runtime-utils tests</title>
+  <style>body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:16px} .ok{color:#0a0}.fail{color:#a00}</style>
+</head>
+<body>
+  <h1>runtime-utils tests</h1>
+  <div id="out"></div>
+  <script>
+    const T = [];
+    function test(name, fn){ T.push({name, fn}); }
+    function eq(actual, expected){ if (actual!==expected) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`); }
+    function deq(a,b){ const ja=JSON.stringify(a), jb=JSON.stringify(b); if (ja!==jb) throw new Error(`Expected ${jb}, got ${ja}`); }
+    function run(){
+      const out=document.getElementById('out');
+      let pass=0, fail=0; const logs=[];
+      T.forEach(({name,fn})=>{ try{ fn(); pass++; logs.push(`<div class=ok>✓ ${name}</div>`);}catch(e){ fail++; logs.push(`<div class=fail>✗ ${name}: ${e.message}</div>`);} });
+      out.innerHTML = `<p>Total: ${T.length} · <span class=ok>Pass: ${pass}</span> · <span class=fail>Fail: ${fail}</span></p>` + logs.join('');
+    }
+  </script>
+  <script>
+    // Stubs of util functions to define expected behavior
+    function htmlToPlainText(html){
+      const div=document.createElement('div');
+      div.innerHTML = html.replace(/<br\s*\/?>(\s*)/gi, '\n');
+      // Strip tags while preserving text
+      const text = div.textContent || '';
+      return text.replace(/\r/g,'').replace(/\n{3,}/g,'\n\n').trim();
+    }
+    function collectImageUrls(html){
+      const urls=new Set();
+      const div=document.createElement('div'); div.innerHTML=html;
+      div.querySelectorAll('img[src]').forEach(img=>{ const u=img.getAttribute('src'); if(/^https?:\/\//i.test(u)) urls.add(u); });
+      // markers like [Image: URL]
+      (html.match(/\[Image:\s*(https?:\/\/[^\]\s]+)\]/gi)||[]).forEach(m=>{ const u=m.replace(/^\[Image:\s*/i,'').replace(/\]$/,'').trim(); urls.add(u); });
+      return Array.from(urls);
+    }
+    function sanitizeFilename(base, idx, dateStr, domain){
+      const safeBase=(base||'unknown').toString().replace(/^@/,'').replace(/[^a-z0-9._-]+/gi,'_').slice(0,40)||'unknown';
+      const safeDom=(domain||'threads').toString().replace(/[^a-z0-9.-]/gi,'-');
+      const safeDate=(dateStr||'').toString().replace(/[^0-9-]/g,'')||'00000000';
+      const n = String(idx).padStart(2,'0');
+      return `${safeDom}_${safeBase}_${safeDate}_${n}.jpg`;
+    }
+    function applyCleaningPatterns(text, patterns){
+      let out=text;
+      patterns.forEach(p=>{ out = out.replace(p,''); });
+      // collapse blank lines
+      return out.replace(/\n{3,}/g,'\n\n').trim();
+    }
+    function heuristicClean(text){
+      // remove standalone handles on a line
+      let out = text.replace(/^(?:@?[a-z0-9._-]{3,20})\s*$/gim,'');
+      // remove sequences of 2-3 standalone small numbers
+      out = out.replace(/^(\d{1,3})\s*$\n^(\d{1,3})\s*$(?:\n^(\d{1,3})\s*$)?/gim,'');
+      // collapse
+      return out.replace(/\n{3,}/g,'\n\n').trim();
+    }
+    function buildMarkdown(html, meta){
+      const body = htmlToPlainText(html);
+      const header = `# Thread by ${meta.authorName} (${meta.authorUsername})\n\n${meta.originalUrl? 'Original: '+meta.originalUrl+'\n':''}${meta.threadInfo||''}\n\n---\n\n`;
+      return header + body + '\n';
+    }
+
+    // Tests
+    test('htmlToPlainText: preserves paragraphs and line breaks', ()=>{
+      const html = '<div>Hello<br>world</div><p><strong>Bold</strong> text</p>';
+      eq(htmlToPlainText(html), 'Hello\nworld\n\nBold text');
+    });
+    test('collectImageUrls: extracts from img and markers', ()=>{
+      const html = '<img src="https://a/b.jpg"><div>[Image: https://x/y.png]</div><img src="/relative.png">';
+      deq(collectImageUrls(html).sort(), ['https://a/b.jpg','https://x/y.png'].sort());
+    });
+    test('sanitizeFilename: produces safe name', ()=>{
+      const name = sanitizeFilename('@user.name','3','20250101','www.threads.com');
+      eq(name, 'www.threads.com_user.name_20250101_03.jpg');
+    });
+    test('applyCleaningPatterns: removes ui text and collapses', ()=>{
+      const t = 'Line\nTranslate\nDịch\nView activity\nXem hoạt động\nLine2';
+      const patterns=[/\n?Translate\n?/gi,/\n?Dịch\n?/gi,/\n?View activity\n?/gi,/\n?Xem hoạt động\n?/gi];
+      eq(applyCleaningPatterns(t,patterns),'Line\n\nLine2');
+    });
+    test('heuristicClean: removes handles and number sequences', ()=>{
+      const t = '@user\n123\n9\ncontent line\n@another';
+      eq(heuristicClean(t),'content line');
+    });
+    test('buildMarkdown: header and body combined', ()=>{
+      const md = buildMarkdown('<div>A<br>B</div>',{authorName:'Name',authorUsername:'@u',originalUrl:'https://t',threadInfo:'10 words'});
+      eq(/^# Thread by Name \(@u\)/.test(md), true);
+      eq(md.includes('Original: https://t'), true);
+      eq(md.trim().endsWith('A\nB'), true);
+    });
+
+    document.addEventListener('DOMContentLoaded', run);
+  </script>
+</body>
+</html>
