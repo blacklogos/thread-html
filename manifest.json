@@ -9,6 +9,7 @@
     "scripting"
   ],
   "host_permissions": [
+    "*://*.threads.com/*",
     "*://*.threads.net/*"
   ],
   "action": {
@@ -17,6 +18,7 @@
   "content_scripts": [
     {
       "matches": [
+        "*://*.threads.com/*",
         "*://*.threads.net/*"
       ],
       "js": ["content.js"],

@@ -167,9 +167,9 @@ function findThreadPosts() {
   
   // Method 2: Try to extract from URL
   if (!authorUsername) {
-    const urlMatch = window.location.href.match(/threads\.net\/@([^/]+)/);
+    const urlMatch = window.location.href.match(/(threads\.com|threads\.net)\/@([^/]+)/);
     if (urlMatch) {
-      authorUsername = urlMatch[1];
+      authorUsername = urlMatch[2];
       console.log('Extracted username from URL:', authorUsername);
     } else {
       console.log('Could not extract username from URL:', window.location.href);
@@ -696,7 +696,7 @@ function extractTimestamp(postElement) {
 
 // Helper function to extract media URLs
 function extractMediaUrls(postElement) {
-  const mediaElements = postElement.querySelectorAll('img[src*="threads.net"], img[src*="scontent"], img[src*="instagram"]');
+  const mediaElements = postElement.querySelectorAll('img[src*="threads.com"], img[src*="threads.net"], img[src*="scontent"], img[src*="instagram"]');
   return Array.from(mediaElements)
     .map(img => img.src)
     .filter(src => !src.includes('emoji') && !src.includes('avatar'));
@@ -853,13 +853,14 @@ async function extractThreadData() {
       metaData
     });
     
+    const currentHost = (new URL(window.location.href)).host || 'www.threads.com';
     return {
       posts: uniquePosts,
       url,
       author: {
         name: authorUsername,
         displayName: authorDisplayName,
-        url: `https://www.threads.net/@${authorUsername}`
+        url: `https://${currentHost.startsWith('www.') ? currentHost : 'www.' + currentHost}/@${authorUsername}`
       },
       metaData
     };
