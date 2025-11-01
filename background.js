@@ -1098,33 +1098,39 @@ async function generateHtmlContent(data) {
   // Generate a unique timestamp for this export
   const timestamp = Date.now();
   
-  // Build per-post HTML with images from posts[i].mediaUrls (keep URL params)
-  var postHtmls = [];
-  try {
-    for (var i = 0; i < cleanedPosts.length; i++) {
-      var rawTxt = cleanedPosts[i] || '';
-      // Strip markers and UX label "Hàng đầu"
-      var txt = rawTxt
-        .replace(/\[Image:\s*https?:\/\/[^\]]+\]\s*/gi, '')
-        .replace(/\[YouTube:\s*https?:\/\/[^\]]+\]\s*/gi, '')
-        .replace(/\[Link:\s*https?:\/\/[^\]]+\]\s*/gi, '')
-        .replace(/Hàng đầu/gi, '')
-        .trim();
-      var htmlText = txt.split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; }).join('<br>');
-      var seen = new Set();
-      var mediaArr = (posts && posts[i] && Array.isArray(posts[i].mediaUrls)) ? posts[i].mediaUrls : [];
-      var imgs = [];
-      for (var j = 0; j < mediaArr.length; j++) {
-        var u = mediaArr[j];
-        if (typeof u === 'string' && /^https?:\/\//i.test(u) && !seen.has(u)) { seen.add(u); imgs.push(u); }
+  // Build threadContentHtml from text and inline markers only (no mediaUrls injection)
+  function postToHtml(txt) {
+    try { txt = String(txt || '').replace(/Hàng đầu/gi, ''); } catch(e) {}
+    var h = (txt || '').split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; }).join('<br>');
+    // Convert [Image: URL] markers to images
+    h = h.replace(/\[Image:\s*(https?:\/\/[^\]]+)\]/gi, '<img src="$1" class="post-image" alt="Thread image" loading="lazy" referrerpolicy="no-referrer">');
+    // Convert YouTube markers
+    h = h.replace(/\[YouTube:\s*(https?:\/\/[^\]]+)\]/gi, function(_m, url){
+      var videoId = '';
+      if (url.indexOf('youtu.be/') !== -1) {
+        videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
+      } else if (url.indexOf('youtube.com/watch') !== -1) {
+        try { var u = new URL(url); videoId = u.searchParams.get('v') || ''; } catch(e) {}
       }
-      var mediaHtml = imgs.map(function(u){ return '<div class="post-media"><img src="' + u + '" class="post-image" alt="" loading="lazy" referrerpolicy="no-referrer"></div>'; }).join('');
-      var combined = htmlText;
-      if (mediaHtml) combined = (combined ? combined + '<br>' : '') + mediaHtml;
-      if (combined) postHtmls.push(combined);
-    }
-  } catch (genErr) { console.error('Error building per-post HTML:', genErr); }
-  var threadContentHtml = postHtmls.join('<br><br>');
+      if (videoId) {
+        return (
+          '<div class="youtube-container">' +
+            '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer">' +
+              '<div class="youtube-thumbnail">' +
+                '<img src="https://img.youtube.com/vi/' + videoId + '/0.jpg" alt="YouTube Thumbnail" loading="lazy">' +
+                '<div class="youtube-play-icon">▶</div>' +
+              '</div>' +
+              '<span class="link-text">Watch on YouTube</span>' +
+            '</a>' +
+          '</div>'
+        );
+      }
+      return '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ' + url + '</span></a>';
+    });
+    return h;
+  }
+
+  var threadContentHtml = finalPosts.map(postToHtml).join('<br><br>');
 
   // Collect all image URLs across posts (dedupe; keep params intact)
   var imageSet = new Set();
