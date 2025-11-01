@@ -92,21 +92,58 @@
   }
 
   function attachImgFallbacks(root){
+    function tryProxy(src, onSuccess, onFail){
+      try{
+        chrome.runtime.sendMessage({ action:'proxyFetchImage', url: src }, (resp)=>{
+          if(resp && resp.ok && resp.buffer){
+            const bytes=new Uint8Array(resp.buffer);
+            const blob=new Blob([bytes], { type: resp.type||'image/jpeg' });
+            const u=URL.createObjectURL(blob);
+            state.blobUrls.push(u);
+            onSuccess(u);
+          } else { onFail && onFail(resp && resp.error); }
+        });
+      }catch(e){ onFail && onFail(e && e.message || String(e)); }
+    }
+
+    function makePlaceholder(src, img){
+      const placeholder = document.createElement('div');
+      placeholder.className = 'img-fallback';
+      placeholder.innerHTML = 'Image blocked by site policy.<div class="img-actions"></div>';
+      const actions = placeholder.querySelector('.img-actions');
+      const open = document.createElement('a'); open.textContent='Open original'; open.href=src; open.target='_blank'; open.rel='noopener noreferrer'; actions.appendChild(open);
+      const btn = document.createElement('button'); btn.textContent='Load via Proxy'; btn.className='action-button'; btn.addEventListener('click', ()=>{
+        tryProxy(src, (u)=>{ img.src=u; img.style.display=''; placeholder.replaceWith(img); }, ()=>showToast('Proxy failed'));
+      }); actions.appendChild(btn);
+      return placeholder;
+    }
+
     root.querySelectorAll('img').forEach(img=>{
-      img.addEventListener('error', ()=>{
+      // Set helpful attributes
+      try{ img.loading = 'lazy'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; }catch(e){}
+
+      const handleError = ()=>{
         const src = img.getAttribute('src')||'';
-        const placeholder = document.createElement('div');
-        placeholder.className = 'img-fallback';
-        placeholder.innerHTML = 'Image blocked by site policy.<div class="img-actions"></div>';
-        const actions = placeholder.querySelector('.img-actions');
-        const open = document.createElement('a'); open.textContent='Open original'; open.href=src; open.target='_blank'; open.rel='noopener noreferrer'; actions.appendChild(open);
-        const btn = document.createElement('button'); btn.textContent='Load via Proxy'; btn.className='action-button'; btn.addEventListener('click', ()=>{
-          try{ chrome.runtime.sendMessage({ action:'proxyFetchImage', url: src }, (resp)=>{
-            if(resp && resp.ok && resp.buffer){ const bytes=new Uint8Array(resp.buffer); const blob=new Blob([bytes], { type: resp.type||'image/jpeg' }); const u=URL.createObjectURL(blob); state.blobUrls.push(u); img.src=u; img.style.display=''; placeholder.replaceWith(img); } else { showToast('Proxy failed'); }
-          }); }catch(e){ showToast('Proxy unsupported'); }
-        }); actions.appendChild(btn);
-        img.replaceWith(placeholder);
-      }, { once: true });
+        // Auto attempt proxy first
+        tryProxy(src, (u)=>{ img.src=u; }, (err)=>{
+          const ph = makePlaceholder(src, img);
+          img.replaceWith(ph);
+        });
+      };
+
+      img.addEventListener('error', handleError, { once: true });
+
+      // If already complete but failed, handle immediately
+      if (img.complete && (img.naturalWidth === 0 || img.naturalHeight === 0)) {
+        handleError();
+      } else {
+        // Also re-check shortly in case error fired before listener attached
+        setTimeout(()=>{
+          if (img.complete && (img.naturalWidth === 0 || img.naturalHeight === 0)) {
+            handleError();
+          }
+        }, 250);
+      }
     });
   }
 

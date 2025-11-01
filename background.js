@@ -840,6 +840,30 @@ async function generateHtmlContent(data) {
   
   // Use non-empty posts or default to original cleaned posts if all were filtered out
   const finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
+
+  // Remove platform UX labels from the first post, e.g., Vietnamese "Hàng đầu" and other languages
+  if (finalPosts.length > 0) {
+    try {
+      const uxLabelPatterns = [
+        /^(Hàng đầu|Nổi bật)$/i,                 // Vietnamese
+        /^(Top|Most relevant|Popular|Trending)$/i, // English
+        /^(Destacado|Más relevante|Tendencia)$/i,  // Spanish
+        /^(Populaire|Tendance|Le plus pertinent)$/i, // French
+        /^(Popolare|Di tendenza|Più rilevanti)$/i, // Italian
+        /^(Popular|Tendência|Mais relevantes)$/i, // Portuguese
+        /^(Beliebt|Relevanteste|Im Trend)$/i       // German
+      ];
+      const lines = finalPosts[0].split(/\n+/);
+      const cleanedLines = lines.filter((line, idx) => {
+        if (idx > 2) return true; // only scrub top few lines
+        const t = line.trim();
+        return !uxLabelPatterns.some(rx => rx.test(t));
+      });
+      finalPosts[0] = cleanedLines.join('\n').trim();
+    } catch (e) {
+      console.warn('UX label cleanup failed:', e);
+    }
+  }
   
   // Join all cleaned posts with double line breaks and convert to HTML breaks
   let threadContent = finalPosts.join('\n\n\n')  // Three newlines between posts
@@ -1075,31 +1099,36 @@ async function generateHtmlContent(data) {
   const timestamp = Date.now();
   
   // Build threadContentHtml by expanding media markers to HTML
-  let threadContentHtml = threadContent.replace(/\[Image: (https?:\/\/[^\]]+)\]/g,
-    '<img src="$1" class="post-image" alt="Thread image" loading="lazy">'
-  );
-  threadContentHtml = threadContentHtml.replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, function(match, url){
+  // Build HTML with explicit post separators (---)
+  function postToHtml(txt) {
+    var h = (txt || '').split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; }).join('<br>');
+    h = h.replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy">');
+    h = h.replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, function(_m, url){
     var videoId = '';
     if (url.indexOf('youtu.be/') !== -1) {
       videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
     } else if (url.indexOf('youtube.com/watch') !== -1) {
       try { var u = new URL(url); videoId = u.searchParams.get('v') || ''; } catch(e) {}
     }
-    if (videoId) {
-      return (
-        '<div class="youtube-container">' +
-          '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer">' +
-            '<div class="youtube-thumbnail">' +
-              '<img src="https://img.youtube.com/vi/' + videoId + '/0.jpg" alt="YouTube Thumbnail" loading="lazy">' +
-              '<div class="youtube-play-icon">▶</div>' +
-            '</div>' +
-            '<span class="link-text">Watch on YouTube</span>' +
-          '</a>' +
-        '</div>'
-      );
-    }
-    return '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ' + url + '</span></a>';
-  });
+      if (videoId) {
+        return (
+          '<div class="youtube-container">' +
+            '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer">' +
+              '<div class="youtube-thumbnail">' +
+                '<img src="https://img.youtube.com/vi/' + videoId + '/0.jpg" alt="YouTube Thumbnail" loading="lazy">' +
+                '<div class="youtube-play-icon">▶</div>' +
+              '</div>' +
+              '<span class="link-text">Watch on YouTube</span>' +
+            '</a>' +
+          '</div>'
+        );
+      }
+      return '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ' + url + '</span></a>';
+    });
+    return h;
+  }
+
+  var threadContentHtml = finalPosts.map(postToHtml).join('<br><br>---<br><br>');
 
   console.log('Generating HTML content for author:', authorName);
   const htmlContent = `
@@ -2243,7 +2272,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
     }
   } else if (request.action === 'toggleSimplifiedPatterns') {
-    // existing handler continues
+    try {
+      useSimplifiedPatterns = request.value;
+      loadPatternsFromJson();
+      safeResponse({ success: true, message: `Using ${useSimplifiedPatterns ? 'simplified' : 'standard'} cleaning patterns` });
+    } catch (e) {
+      safeResponse({ success: false, error: e.message });
+    }
+    return true;
   } else if (request.action === 'proxyFetchImage') {
     (async () => {
       try {
@@ -2281,18 +2317,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       safeResponse({ success: false, error: e.message });
     }
     return true;
-    // Toggle the pattern set to use
-    useSimplifiedPatterns = request.value;
-    // Reload patterns with the new setting
-    loadPatternsFromJson();
-    
-    // Use the safe response function here too
-    safeResponse({ 
-      success: true, 
-      message: `Using ${useSimplifiedPatterns ? 'simplified' : 'standard'} cleaning patterns` 
-    });
-    
-    return true; // Required for async response
   } else {
     // For unhandled actions, always send a response
     safeResponse({
