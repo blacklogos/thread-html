@@ -1899,11 +1899,11 @@ async function generateHtmlContent(data) {
     </div>
     
     <div class="action-buttons">
-      <button class="action-button copy-button" onclick="copyText2()">Copy Text</button>
+      <button class="action-button copy-button" onclick="(window.copyText2||window.copyText||function(){alert('Copy unavailable')}).call(this)">Copy Text</button>
       <button class="action-button" onclick="window.print()">Save PDF</button>
-      <button class="action-button" onclick="downloadImages()">Download Images</button>
-      <button class="action-button" onclick="toggleEditMode()">Edit Mode</button>
-      <button class="action-button" onclick="saveAsMarkdown()">Save as MD</button>
+      <button class="action-button" onclick="(window.downloadImages||function(){alert('Download unavailable')}).call(this)">Download Images</button>
+      <button class="action-button" onclick="(window.toggleEditMode||function(){alert('Edit mode unavailable')}).call(this)">Edit Mode</button>
+      <button class="action-button" onclick="(window.saveAsMarkdown||function(){alert('Markdown unavailable')}).call(this)">Save as MD</button>
     </div>
     
     <footer>
