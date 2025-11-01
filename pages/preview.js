@@ -156,6 +156,22 @@
     const article = document.getElementById('article');
     article.innerHTML = data.threadContentHtml || '';
     attachImgFallbacks(article);
+
+    // Build images list from renderData.imageUrls if available
+    try {
+      const urls = Array.isArray(data.imageUrls) ? data.imageUrls.filter(u=>/^https?:\/\//i.test(u)) : [];
+      const section = document.getElementById('imagesSection');
+      const list = document.getElementById('imageList');
+      list.innerHTML = '';
+      if (urls.length){
+        urls.forEach(u=>{ const li=document.createElement('li'); const a=document.createElement('a'); a.href=u; a.target='_blank'; a.rel='noopener noreferrer'; a.textContent=u; li.appendChild(a); list.appendChild(li); });
+        section.style.display='block';
+        state.threadImageUrls = urls.slice();
+      } else {
+        section.style.display='none';
+        state.threadImageUrls = [];
+      }
+    } catch(e) {}
   }
 
   function bindUI(){
@@ -164,6 +180,18 @@
     document.getElementById('btnImages').addEventListener('click', downloadImages);
     document.getElementById('btnEdit').addEventListener('click', toggleEditMode);
     document.getElementById('btnMd').addEventListener('click', saveAsMarkdown);
+    const premiumBtn = document.getElementById('btnImagesPremium');
+    premiumBtn.addEventListener('click', ()=>{
+      const urls = state.threadImageUrls||[]; if(!urls.length){ showToast('No thread images'); return; }
+      const author = (document.getElementById('authorUsername')?.textContent||'unknown').replace(/^@/, '');
+      const now=new Date(); const pad=n=>String(n).padStart(2,'0'); const date = '' + now.getFullYear() + pad(now.getMonth()+1) + pad(now.getDate()); const domain=(location.hostname||'threads');
+      let idx=0; showToast('Downloading ' + urls.length + ' images');
+      (function next(){ if(idx>=urls.length){ showToast('Done'); return; } const u=urls[idx++]; const m=(u.split('?')[0].split('#')[0].match(/\.(jpg|jpeg|png|gif|webp)$/i)); const ext=(m?m[0]:'.jpg'); const fname = domain + '_' + author + '_' + date + '_' + String(idx).padStart(2,'0') + (ext.startsWith('.') ? '' : '.') + ext.replace(/^\./,'');
+        try{ chrome.runtime.sendMessage({ action:'downloadImageUrl', url:u, filename: fname }, (resp)=>{
+          if (!resp || resp.success!==true){ try{ const a=document.createElement('a'); a.href=u; a.download=fname; a.style.display='none'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){} }
+        }); }catch(e){}
+        setTimeout(next, 250); })();
+    });
   }
 
   window.addEventListener('beforeunload', ()=>{ state.blobUrls.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} }); state.blobUrls = []; });

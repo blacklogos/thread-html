@@ -1099,8 +1099,9 @@ async function generateHtmlContent(data) {
   const timestamp = Date.now();
   
   // Build threadContentHtml by expanding media markers to HTML
-  // Build HTML with explicit post separators (---)
+  // Build HTML for a post (remove specific UX labels like "Hàng đầu")
   function postToHtml(txt) {
+    try { txt = txt.split('\n').map(function(l){ return l.replace(/Hàng đầu/g, '').trim(); }).join('\n'); } catch(e) {}
     var h = (txt || '').split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; }).join('<br>');
     h = h.replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy">');
     h = h.replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, function(_m, url){
@@ -1128,7 +1129,28 @@ async function generateHtmlContent(data) {
     return h;
   }
 
-  var threadContentHtml = finalPosts.map(postToHtml).join('<br><br>---<br><br>');
+  var threadContentHtml = finalPosts.map(postToHtml).join('<br><br>');
+
+  // Collect all image URLs across posts (dedupe)
+  var imageSet = new Set();
+  try {
+    (posts || []).forEach(function(p){
+      (p.mediaUrls || []).forEach(function(u){
+        if (typeof u === 'string' && /^https?:\/\//i.test(u)) {
+          var nu = u.split('#')[0].split('?')[0];
+          imageSet.add(nu);
+        }
+      });
+    });
+  } catch(e) {}
+  // Also collect from content markers if any
+  try {
+    (threadContent.match(/\[Image:\s*(https?:\/\/[^\]\s]+)\]/gi) || []).forEach(function(m){
+      var u = m.replace(/^\[Image:\s*/i,'').replace(/\]$/,'').trim();
+      if (/^https?:\/\//i.test(u)) imageSet.add(u.split('#')[0].split('?')[0]);
+    });
+  } catch(e) {}
+  var imagesAll = Array.from(imageSet);
 
   console.log('Generating HTML content for author:', authorName);
   const htmlContent = `
@@ -1984,7 +2006,8 @@ async function generateHtmlContent(data) {
       originalDate: originalDate,
       totalWords: totalWords,
       readTimeMinutes: readTimeMinutes,
-      threadContentHtml: threadContentHtml
+      threadContentHtml: threadContentHtml,
+      imageUrls: imagesAll
     }
   };
 } // End of generateHtmlContent function
