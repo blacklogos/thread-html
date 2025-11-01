@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>runtime-utils tests</title>
+  <style>body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:16px} .ok{color:#0a0}.fail{color:#a00}</style>
+</head>
+<body>
+  <h1>runtime-utils tests</h1>
+  <div id="out"></div>
+  <script src="../utils/runtime-utils.js"></script>
+  <script>
+    const T = [];
+    function test(name, fn){ T.push({name, fn}); }
+    function eq(actual, expected){ if (actual!==expected) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`); }
+    function deq(a,b){ const ja=JSON.stringify(a), jb=JSON.stringify(b); if (ja!==jb) throw new Error(`Expected ${jb}, got ${ja}`); }
+    function run(){
+      const out=document.getElementById('out');
+      let pass=0, fail=0; const logs=[];
+      T.forEach(({name,fn})=>{ try{ fn(); pass++; logs.push(`<div class=ok>✓ ${name}</div>`);}catch(e){ fail++; logs.push(`<div class=fail>✗ ${name}: ${e.message}</div>`);} });
+      out.innerHTML = `<p>Total: ${T.length} · <span class=ok>Pass: ${pass}</span> · <span class=fail>Fail: ${fail}</span></p>` + logs.join('');
+    }
+  </script>
+  <script>
+    // Tests using RuntimeUtils
+    test('htmlToPlainText: preserves paragraphs and line breaks', ()=>{
+      const html = '<div>Hello<br>world</div><p><strong>Bold</strong> text</p>';
+      eq(RuntimeUtils.htmlToPlainText(html), 'Hello\nworld\n\nBold text');
+    });
+    test('collectImageUrls: extracts from img and markers', ()=>{
+      const html = '<img src="https://a/b.jpg"><div>[Image: https://x/y.png]</div><img src="/relative.png">';
+      deq(RuntimeUtils.collectImageUrls(html).sort(), ['https://a/b.jpg','https://x/y.png'].sort());
+    });
+    test('collectImageUrls: handles img srcset picking highest candidate', ()=>{
+      const html = '<img srcset="https://cdn/img-320.jpg 320w, https://cdn/img-640.jpg 640w" />';
+      deq(RuntimeUtils.collectImageUrls(html), ['https://cdn/img-640.jpg']);
+    });
+    test('collectImageUrls: collects from <picture><source srcset> and <img>', ()=>{
+      const html = '<picture class="x87ps6o">' +
+        '<source srcset="https://i1.webp 320w, https://i2.webp 640w" type="image/webp">' +
+        '<img src="https://fallback.jpg" alt="" />' +
+      '</picture>';
+      const res = RuntimeUtils.collectImageUrls(html).sort();
+      // Either highest from source or img fallback should be present
+      const ok = res.includes('https://i2.webp') || res.includes('https://fallback.jpg');
+      if (!ok) throw new Error('expected image URL from picture/source or img');
+    });
+    test('sanitizeFilename: produces safe name', ()=>{
+      const name = sanitizeFilename('@user.name','3','20250101','www.threads.com');
+      eq(RuntimeUtils.sanitizeFilename('@user.name','3','20250101','www.threads.com'), 'www.threads.com_user.name_20250101_03.jpg');
+    });
+    test('applyCleaningPatterns: removes ui text and collapses', ()=>{
+      const t = 'Line\nTranslate\nDịch\nView activity\nXem hoạt động\nLine2';
+      const patterns=[/\n?Translate\n?/gi,/\n?Dịch\n?/gi,/\n?View activity\n?/gi,/\n?Xem hoạt động\n?/gi];
+      eq(RuntimeUtils.applyCleaningPatterns(t,patterns),'Line\n\nLine2');
+    });
+    test('heuristicClean: removes handles and number sequences', ()=>{
+      const t = '@user\n123\n9\ncontent line\n@another';
+      eq(RuntimeUtils.heuristicClean(t),'content line');
+    });
+    test('buildMarkdown: header and body combined', ()=>{
+      const md = RuntimeUtils.buildMarkdown('<div>A<br>B</div>',{authorName:'Name',authorUsername:'@u',originalUrl:'https://t',threadInfo:'10 words'});
+      eq(/^# Thread by Name \(@u\)/.test(md), true);
+      eq(md.includes('Original: https://t'), true);
+      eq(md.trim().endsWith('A\nB'), true);
+    });
+
+    // Edit mode helper
+    test('toggleContentEditable toggles attribute', ()=>{
+      const el = document.createElement('div');
+      eq(RuntimeUtils.toggleContentEditable(el, true), true);
+      eq(el.getAttribute('contenteditable'), 'true');
+      eq(RuntimeUtils.toggleContentEditable(el, false), false);
+      eq(el.getAttribute('contenteditable'), 'false');
+    });
+
+    // Download plan from HTML with picture/srcset
+    test('buildImageDownloadPlan creates filenames preserving extension', ()=>{
+      const html = '<picture><source srcset="https://a/b.webp 320w, https://a/c.webp 640w"><img src="https://a/fallback.jpg"></picture>';
+      const plan = RuntimeUtils.buildImageDownloadPlan(html, '@user', 'threads.net', '20250101');
+      if (!plan.length) throw new Error('no plan items');
+      // Ensure names look like domain_user_YYYYMMDD_01.ext
+      const ok = /^threads\.net_user_20250101_\d{2}\.(webp|jpg)$/.test(plan[0].filename);
+      eq(ok, true);
+    });
+
+    document.addEventListener('DOMContentLoaded', run);
+  </script>
+</body>
+</html>

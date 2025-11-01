@@ -9,7 +9,10 @@
     "scripting"
   ],
   "host_permissions": [
-    "*://*.threads.net/*"
+    "*://*.threads.com/*",
+    "*://*.threads.net/*",
+    "*://*.fbcdn.net/*",
+    "*://*.cdninstagram.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
@@ -17,6 +20,7 @@
   "content_scripts": [
     {
       "matches": [
+        "*://*.threads.com/*",
         "*://*.threads.net/*"
       ],
       "js": ["content.js"],

@@ -47,8 +47,11 @@ document.addEventListener('DOMContentLoaded', () => {
       throw new Error('No active tab found');
     }
     
-    if (!tab.url.includes('threads.net')) {
-      throw new Error('Please navigate to a Threads post');
+    // Support both domains; default to threads.com as primary target
+    const isThreadsCom = tab.url.includes('threads.com');
+    const isThreadsNet = tab.url.includes('threads.net');
+    if (!isThreadsCom && !isThreadsNet) {
+      throw new Error('Please navigate to a Threads post on threads.com or threads.net');
     }
     
     return tab;

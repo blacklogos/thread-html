@@ -1,11 +1,13 @@
 // Initialize the cleaning patterns
 let cleaningPatterns = [];
+// Toggle to control simplified/aggressive cleaning
+let useSimplifiedPatterns = false;
 
 // Load patterns from JSON file using fetch with better error handling
 function loadPatternsFromJson() {
   console.log('Attempting to load cleaning patterns from JSON...');
   
-  fetch('./utils/cleaning-patterns.json')
+  fetch(chrome.runtime.getURL('utils/cleaning-patterns.json'))
     .then(response => {
       if (!response.ok) {
         throw new Error(`Failed to load patterns: ${response.status} ${response.statusText}`);
@@ -838,6 +840,30 @@ async function generateHtmlContent(data) {
   
   // Use non-empty posts or default to original cleaned posts if all were filtered out
   const finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
+
+  // Remove platform UX labels from the first post, e.g., Vietnamese "Hàng đầu" and other languages
+  if (finalPosts.length > 0) {
+    try {
+      const uxLabelPatterns = [
+        /^(Hàng đầu|Nổi bật)$/i,                 // Vietnamese
+        /^(Top|Most relevant|Popular|Trending)$/i, // English
+        /^(Destacado|Más relevante|Tendencia)$/i,  // Spanish
+        /^(Populaire|Tendance|Le plus pertinent)$/i, // French
+        /^(Popolare|Di tendenza|Più rilevanti)$/i, // Italian
+        /^(Popular|Tendência|Mais relevantes)$/i, // Portuguese
+        /^(Beliebt|Relevanteste|Im Trend)$/i       // German
+      ];
+      const lines = finalPosts[0].split(/\n+/);
+      const cleanedLines = lines.filter((line, idx) => {
+        if (idx > 2) return true; // only scrub top few lines
+        const t = line.trim();
+        return !uxLabelPatterns.some(rx => rx.test(t));
+      });
+      finalPosts[0] = cleanedLines.join('\n').trim();
+    } catch (e) {
+      console.warn('UX label cleanup failed:', e);
+    }
+  }
   
   // Join all cleaned posts with double line breaks and convert to HTML breaks
   let threadContent = finalPosts.join('\n\n\n')  // Three newlines between posts
@@ -1072,6 +1098,60 @@ async function generateHtmlContent(data) {
   // Generate a unique timestamp for this export
   const timestamp = Date.now();
   
+  // Build threadContentHtml from text and inline markers only (no mediaUrls injection)
+  function postToHtml(txt) {
+    try { txt = String(txt || '').replace(/Hàng đầu/gi, ''); } catch(e) {}
+    var h = (txt || '').split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; }).join('<br>');
+    // Convert [Image: URL] markers to images
+    h = h.replace(/\[Image:\s*(https?:\/\/[^\]]+)\]/gi, '<img src="$1" class="post-image" alt="Thread image" loading="lazy" referrerpolicy="no-referrer">');
+    // Convert YouTube markers
+    h = h.replace(/\[YouTube:\s*(https?:\/\/[^\]]+)\]/gi, function(_m, url){
+      var videoId = '';
+      if (url.indexOf('youtu.be/') !== -1) {
+        videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
+      } else if (url.indexOf('youtube.com/watch') !== -1) {
+        try { var u = new URL(url); videoId = u.searchParams.get('v') || ''; } catch(e) {}
+      }
+      if (videoId) {
+        return (
+          '<div class="youtube-container">' +
+            '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer">' +
+              '<div class="youtube-thumbnail">' +
+                '<img src="https://img.youtube.com/vi/' + videoId + '/0.jpg" alt="YouTube Thumbnail" loading="lazy">' +
+                '<div class="youtube-play-icon">▶</div>' +
+              '</div>' +
+              '<span class="link-text">Watch on YouTube</span>' +
+            '</a>' +
+          '</div>'
+        );
+      }
+      return '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ' + url + '</span></a>';
+    });
+    return h;
+  }
+
+  var threadContentHtml = finalPosts.map(postToHtml).join('<br><br>');
+
+  // Collect all image URLs across posts (dedupe; keep params intact)
+  var imageSet = new Set();
+  try {
+    (posts || []).forEach(function(p){
+      (p.mediaUrls || []).forEach(function(u){
+        if (typeof u === 'string' && /^https?:\/\//i.test(u)) {
+          imageSet.add(u);
+        }
+      });
+    });
+  } catch(e) {}
+  // Also collect from content markers if any
+  try {
+    (threadContent.match(/\[Image:\s*(https?:\/\/[^\]\s]+)\]/gi) || []).forEach(function(m){
+      var u = m.replace(/^\[Image:\s*/i,'').replace(/\]$/,'').trim();
+      if (/^https?:\/\//i.test(u)) imageSet.add(u);
+    });
+  } catch(e) {}
+  var imagesAll = Array.from(imageSet);
+
   console.log('Generating HTML content for author:', authorName);
   const htmlContent = `
 <!DOCTYPE html>
@@ -1456,6 +1536,151 @@ async function generateHtmlContent(data) {
         });
     }
 
+    // New robust copy function used by the button (block-aware)
+    function copyText2() {
+      const article = document.querySelector('.article');
+      if (!article) return;
+      let html = article.innerHTML || '';
+      html = html.replace(/<br\s*\/?>(\s*)/gi, '\n');
+      html = html.replace(/<\/(?:p|div|section|article|li|ul|ol|h[1-6])>/gi, '$&\n\n');
+      html = html.replace(/<(?:p|div|section|article|li|ul|ol|h[1-6])[^>]*>/gi, '');
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      let text = (div.textContent || '')
+        .replace(/\r/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+      function onSuccess() {
+        const button = document.querySelector('.copy-button');
+        if (button) {
+          const t = button.textContent;
+          button.textContent = 'Copied!';
+          setTimeout(function () { button.textContent = t; }, 2000);
+        }
+      }
+
+      function fallback() {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          if (ok) { onSuccess(); return; }
+        } catch (e) { /* continue to next fallback */ }
+        // Final fallback: select article text and copy
+        try {
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(article);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          const ok2 = document.execCommand('copy');
+          sel.removeAllRanges();
+          if (ok2) { onSuccess(); return; }
+        } catch (e2) {}
+        alert('Failed to copy text.');
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(fallback);
+      } else {
+        fallback();
+      }
+    }
+
+    // Expose handlers on window to be callable from onclick attributes
+    window.copyText2 = copyText2;
+    // Backward-compat: some previews may still call copyText()
+    window.copyText = copyText2;
+    window.downloadImages = downloadImages;
+    window.toggleEditMode = toggleEditMode;
+    window.saveAsMarkdown = saveAsMarkdown;
+
+    // Helper toast
+    function showToast(msg){ const t=document.createElement('div'); t.className='download-info'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>{ t.remove && t.remove(); }, 3000); }
+
+    // Simple contenteditable Edit Mode toggle
+    function toggleEditMode(){
+      const article = document.querySelector('.article');
+      if (!article) return;
+      const enabled = article.getAttribute('contenteditable') === 'true';
+      if (!enabled){
+        article.setAttribute('contenteditable','true');
+        const banner = document.createElement('div');
+        banner.className = 'edit-mode-indicator';
+        banner.textContent = 'Edit Mode: type to modify text. Click "Exit Edit Mode" to finish.';
+        document.body.appendChild(banner);
+        const exitBtn = document.createElement('button');
+        exitBtn.textContent = 'Exit Edit Mode';
+        exitBtn.className = 'action-button edit-mode-button';
+        exitBtn.style.position='fixed'; exitBtn.style.bottom='10px'; exitBtn.style.right='10px';
+        exitBtn.onclick = function(){
+          article.setAttribute('contenteditable','false');
+          if (banner.parentNode) banner.parentNode.removeChild(banner);
+          if (exitBtn.parentNode) exitBtn.parentNode.removeChild(exitBtn);
+        };
+        document.body.appendChild(exitBtn);
+      } else {
+        article.setAttribute('contenteditable','false');
+        const banner = document.querySelector('.edit-mode-indicator'); if (banner) banner.remove();
+        const exitBtn = Array.from(document.querySelectorAll('.edit-mode-button')).pop(); if (exitBtn) exitBtn.remove();
+      }
+    }
+
+    // Download images from preview content (supports <picture>, srcset)
+    function downloadImages(){
+      const article = document.querySelector('.article');
+      if (!article){ showToast('No content'); return; }
+      const urlsSet = new Set();
+
+      const pickFromSrcset = (srcset) => {
+        try { const parts=String(srcset).split(',').map(s=>s.trim()).filter(Boolean); if(!parts.length) return ''; return parts[parts.length-1].split(/\s+/)[0]||''; } catch{ return ''; }
+      };
+
+      // img: prefer currentSrc, then srcset, then src
+      Array.from(article.querySelectorAll('img')).forEach(img => {
+        let u = '';
+        if (img.currentSrc) u = img.currentSrc;
+        if (!u && img.getAttribute('srcset')) u = pickFromSrcset(img.getAttribute('srcset'));
+        if (!u) u = img.getAttribute('src') || '';
+        if (/^https?:\/\//i.test(u)) urlsSet.add(u);
+      });
+
+      // picture > source[srcset]
+      Array.from(article.querySelectorAll('picture source[srcset]')).forEach(src => {
+        const u = pickFromSrcset(src.getAttribute('srcset'));
+        if (/^https?:\/\//i.test(u)) urlsSet.add(u);
+      });
+
+      const markers = (article.innerHTML.match(/\[Image:\s*(https?:\/\/[^\]\s]+)\]/gi)||[]).map(m=>m.replace(/^\[Image:\s*/i,'').replace(/\]$/,'').trim());
+      markers.forEach(u=>{ if(/^https?:\/\//i.test(u)) urlsSet.add(u); });
+      const urls = Array.from(urlsSet);
+      if (!urls.length){ showToast('No images found'); return; }
+      let idx=0; const total=urls.length; const author=(document.querySelector('.author-username')?.textContent||'unknown').replace(/^@/,'');
+      const now=new Date(); const pad=n=>String(n).padStart(2,'0'); const date = '' + now.getFullYear() + pad(now.getMonth()+1) + pad(now.getDate()); const domain=(location.hostname||'threads');
+      showToast('Downloading ' + total + ' images...');
+      (function next(){ if(idx>=total){ showToast('Done'); return; } const u=urls[idx++];
+        try{
+          const m=(u.split('?')[0].split('#')[0].match(/\.(jpg|jpeg|png|gif|webp)$/i));
+          const ext=(m?m[0]:'.jpg');
+          const fname = domain + '_' + author + '_' + date + '_' + String(idx).padStart(2,'0') + (ext.startsWith('.') ? '' : '.') + ext.replace(/^\./,'');
+          // Ask background to download (more reliable for cross-origin)
+          chrome.runtime.sendMessage({ action:'downloadImageUrl', url:u, filename: fname }, (resp)=>{
+            if (!resp || resp.success !== true){
+              // Fallback to anchor method
+              try{ const a=document.createElement('a'); a.href=u; a.download=fname; a.style.display='none'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){ console.error('Anchor download failed', e); }
+            }
+          });
+        }catch(e){ console.error('Image download failed', e); }
+        setTimeout(next,250); })();
+    }
+
     // Interactive editing mode
     function enableEditMode() {
       const article = document.querySelector('.article');
@@ -1652,10 +1877,7 @@ async function generateHtmlContent(data) {
       const authorUsername = document.querySelector('.author-username')?.textContent || '@unknown';
       const threadInfo = document.querySelector('.thread-info')?.textContent || '';
       
-      const header = 
-        \`# Thread by \${authorName} (\${authorUsername})\\n\\n\` +
-        \`\${threadInfo}\\n\\n\` +
-        \`---\\n\\n\`;
+      const header = '# Thread by ' + authorName + ' (' + authorUsername + ')\\n\\n' + threadInfo + '\\n\\n---\\n\\n';
       
       markdown = header + markdown;
       
@@ -1670,7 +1892,7 @@ async function generateHtmlContent(data) {
       const now = new Date();
       const timestamp = now.toISOString().replace(/:/g, '-').replace(/\\..+/, '');
       
-      a.download = \`thread_\${authorUsername.replace('@', '')}_\${timestamp}.md\`;
+      a.download = 'thread_' + authorUsername.replace('@','') + '_' + timestamp + '.md';
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
@@ -1720,44 +1942,14 @@ async function generateHtmlContent(data) {
       </div>
     </div>
     
-    <div class="article">${threadContent
-      .replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy" onerror="this.src=\'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f5bc.png\'; this.style.width=\'72px\'; this.style.height=\'72px\';">')
-      .replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, (match, url) => {
-        // Extract video ID for YouTube embeds
-        let videoId = '';
-        if (url.includes('youtu.be/')) {
-          videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
-        } else if (url.includes('youtube.com/watch')) {
-          const urlObj = new URL(url);
-          videoId = urlObj.searchParams.get('v');
-        }
-        
-        if (videoId) {
-          // Return YouTube thumbnail with link as fallback
-          return `
-            <div class="youtube-container">
-              <a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer">
-                <div class="youtube-thumbnail">
-                  <img src="https://img.youtube.com/vi/${videoId}/0.jpg" alt="YouTube Thumbnail" loading="lazy" 
-                       onerror="this.src='https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/25b6.png'; this.style.width='72px'; this.style.height='72px';">
-                  <div class="youtube-play-icon">▶</div>
-                </div>
-                <span class="link-text">Watch on YouTube</span>
-              </a>
-            </div>`;
-        } else {
-          // Fallback to regular link
-          return `<a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ${url}</span></a>`;
-        }
-      })
-    }
-    </div>
+    <div class="article">${threadContentHtml}</div>
     
     <div class="action-buttons">
-      <button class="action-button copy-button" onclick="copyText()">Copy Text</button>
+      <button class="action-button copy-button" onclick="(window.copyText2||window.copyText||function(){alert('Copy unavailable')}).call(this)">Copy Text</button>
       <button class="action-button" onclick="window.print()">Save PDF</button>
-      <button class="action-button" onclick="enableEditMode()">Edit Mode</button>
-      <button class="action-button" onclick="saveAsMarkdown()">Save as MD</button>
+      <button class="action-button" onclick="(window.downloadImages||function(){alert('Download unavailable')}).call(this)">Download Images</button>
+      <button class="action-button" onclick="(window.toggleEditMode||function(){alert('Edit mode unavailable')}).call(this)">Edit Mode</button>
+      <button class="action-button" onclick="(window.saveAsMarkdown||function(){alert('Markdown unavailable')}).call(this)">Save as MD</button>
     </div>
     
     <footer>
@@ -1772,11 +1964,25 @@ async function generateHtmlContent(data) {
     htmlContent,
     filename: `thread_${sanitizedAuthorUsername}_${timestamp}.html`,
     sanitizedAuthorUsername,
-    timestamp
+    timestamp,
+    renderData: {
+      authorName: authorName,
+      authorUsername: authorUsername,
+      avatarUrl: base64Avatar,
+      avatarColor: avatarColor,
+      authorInitials: authorInitials,
+      originalDate: originalDate,
+      totalWords: totalWords,
+      readTimeMinutes: readTimeMinutes,
+      threadContentHtml: threadContentHtml,
+      imageUrls: imagesAll
+    }
   };
 } // End of generateHtmlContent function
 
 // Listen for messages from the extension
+let lastPreviewData = null;
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Create timeout safety mechanism
   let responseTimeout = setTimeout(() => {
@@ -1828,109 +2034,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           throw new Error('No data provided for preview');
         }
         
-        // Generate HTML content
-        const { htmlContent, filename } = await generateHtmlContent(request.data);
-        
-        // Create a URL for the preview using safer method
-        let previewUrl;
-        try {
-          // Always prefer data URL for preview when possible for better compatibility
-          if (htmlContent.length < 500000) { // Reduced limit to 500KB to avoid encoding issues
-            try {
-              // Use a more reliable sanitization approach
-              const sanitizedContent = sanitizeForEncoding(htmlContent);
-              
-              // Try to encode in chunks to avoid malformed URI errors
-              let encodedContent = '';
-              const chunkSize = 100000; // Process in 100KB chunks
-              
-              for (let i = 0; i < sanitizedContent.length; i += chunkSize) {
-                const chunk = sanitizedContent.substring(i, i + chunkSize);
-                try {
-                  encodedContent += encodeURIComponent(chunk);
-                } catch (chunkError) {
-                  console.error('Error encoding chunk:', chunkError);
-                  // Skip problematic chunks but continue
-                  encodedContent += encodeURIComponent('[Content encoding error]');
-                }
-              }
-              
-              previewUrl = 'data:text/html;charset=utf-8,' + encodedContent;
-            } catch (encodeError) {
-              console.error('Failed to encode content for data URL:', encodeError);
-              
-              // Fallback to direct navigation with fetched content
-              throw new Error('Data URL encoding failed, using tab navigation fallback');
-            }
-          } else {
-            // For very large content, we'll need to use a server-style approach
-            throw new Error('Content too large for data URL encoding');
+        // Generate content and preview payload
+        const { filename, renderData, htmlContent } = await generateHtmlContent(request.data);
+
+        // Open extension preview page
+        const url = chrome.runtime.getURL('pages/preview.html');
+        chrome.tabs.create({ url, active: true }, (tab) => {
+          if (chrome.runtime.lastError) {
+            safeResponse({ success: false, error: 'Error creating tab: ' + chrome.runtime.lastError.message });
+            return;
           }
-          
-          // Create a new tab with the preview
-          chrome.tabs.create({ url: previewUrl, active: true }, (tab) => {
-            if (chrome.runtime.lastError) {
-              safeResponse({
-                success: false,
-                error: 'Error creating tab: ' + chrome.runtime.lastError.message
-              });
-              return;
-            }
-            
-            // Store reference to this tab for download functionality
-            previewTabs[tab.id] = {
-              htmlContent: htmlContent,
-              filename: filename,
-              originalData: request.data
-            };
-            
-            // Send a message to the popup that preview is ready
-            safeResponse({
-              success: true,
-              previewTabId: tab.id,
-              message: 'Preview opened in new tab'
-            });
-          });
-        } catch (error) {
-          console.error('Preview URL creation error:', error);
-          
-          // Ultimate fallback - use a download approach instead of preview
-          try {
-            // Create a safe fallback by creating a temp file and opening it
-            chrome.downloads.download({
-              url: 'data:text/html;charset=utf-8,' + encodeURIComponent('<html><body><p>Loading preview...</p></body></html>'),
-              filename: filename,
-              saveAs: false
-            }, (downloadId) => {
-              if (chrome.runtime.lastError) {
-                safeResponse({
-                  success: false,
-                  error: 'Download fallback failed: ' + chrome.runtime.lastError.message
-                });
-                return;
-              }
-              
-              // Store reference to the content
-              previewTabs[downloadId] = {
-                htmlContent: htmlContent,
-                filename: filename,
-                originalData: request.data
-              };
-              
-              safeResponse({
-                success: true,
-                previewTabId: downloadId,
-                message: 'Preview downloaded, please open the file'
-              });
-            });
-          } catch (fallbackError) {
-            // If everything fails, inform the user
-            safeResponse({
-              success: false,
-              error: 'Unable to create preview: ' + error.message + '. ' + fallbackError.message
-            });
-          }
-        }
+
+          // Store references
+          previewTabs[tab.id] = { htmlContent, filename, originalData: request.data, renderData };
+          lastPreviewData = renderData;
+
+          // Notify popup
+          safeResponse({ success: true, previewTabId: tab.id, message: 'Preview opened in new tab' });
+
+          // Try to push init to the page (broadcast)
+          try { chrome.runtime.sendMessage({ type: 'preview:init', payload: renderData }); } catch(e) {}
+        });
       } catch (error) {
         console.error('Preview error:', error);
         safeResponse({
@@ -2119,19 +2243,71 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // Return true to indicate we'll send a response asynchronously
     return true;
+  } else if (request.action === 'downloadImageUrl') {
+    try {
+      const { url, filename } = request;
+      if (!url || !/^https?:\/\//i.test(url)) {
+        safeResponse({ success: false, error: 'Invalid URL' });
+        return false;
+      }
+      chrome.downloads.download({ url, filename, saveAs: false }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          safeResponse({ success: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        safeResponse({ success: true, downloadId });
+      });
+      return true;
+    } catch (e) {
+      safeResponse({ success: false, error: e.message });
+      return false;
+    }
   } else if (request.action === 'toggleSimplifiedPatterns') {
-    // Toggle the pattern set to use
-    useSimplifiedPatterns = request.value;
-    // Reload patterns with the new setting
-    loadPatternsFromJson();
-    
-    // Use the safe response function here too
-    safeResponse({ 
-      success: true, 
-      message: `Using ${useSimplifiedPatterns ? 'simplified' : 'standard'} cleaning patterns` 
-    });
-    
-    return true; // Required for async response
+    try {
+      useSimplifiedPatterns = request.value;
+      loadPatternsFromJson();
+      safeResponse({ success: true, message: `Using ${useSimplifiedPatterns ? 'simplified' : 'standard'} cleaning patterns` });
+    } catch (e) {
+      safeResponse({ success: false, error: e.message });
+    }
+    return true;
+  } else if (request.action === 'proxyFetchImage') {
+    (async () => {
+      try {
+        if (!request.url || typeof request.url !== 'string') {
+          throw new Error('Invalid URL');
+        }
+        const resp = await fetch(request.url, { cache: 'no-store', credentials: 'omit' });
+        const type = resp.headers.get('content-type') || '';
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (type.indexOf('image/') !== 0) {
+          // Still allow but warn
+          console.warn('Proxy fetch non-image content-type:', type);
+        }
+        const buf = await resp.arrayBuffer();
+        // Optional size cap ~10MB
+        if (buf.byteLength > 10 * 1024 * 1024) {
+          throw new Error('Image too large');
+        }
+        safeResponse({ ok: true, buffer: buf, type });
+      } catch (e) {
+        console.error('proxyFetchImage error:', e);
+        safeResponse({ ok: false, error: String(e && e.message || e) });
+      }
+    })();
+    return true;
+  } else if (request.action === 'previewReady') {
+    try {
+      if (lastPreviewData) {
+        chrome.runtime.sendMessage({ type: 'preview:init', payload: lastPreviewData });
+        safeResponse({ success: true });
+      } else {
+        safeResponse({ success: false, error: 'No preview data available' });
+      }
+    } catch (e) {
+      safeResponse({ success: false, error: e.message });
+    }
+    return true;
   } else {
     // For unhandled actions, always send a response
     safeResponse({
