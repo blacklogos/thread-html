@@ -1476,7 +1476,10 @@ async function generateHtmlContent(data) {
       function fallback(){
         try { const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
           document.body.appendChild(ta); ta.focus(); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta);
-          if(!ok) throw new Error('execCommand copy failed'); onSuccess(); } catch(e){ console.error('Copy failed', e); alert('Failed to copy text.'); }
+          if(ok){ onSuccess(); return; } } catch(e){ /* continue to next fallback */ }
+        // Final fallback: select article text and copy
+        try { const sel = window.getSelection(); const range=document.createRange(); range.selectNodeContents(article); sel.removeAllRanges(); sel.addRange(range); const ok2=document.execCommand('copy'); sel.removeAllRanges(); if(ok2){ onSuccess(); return; } } catch(e2) {}
+        alert('Failed to copy text.');
       }
       if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(onSuccess).catch(fallback); } else { fallback(); }
     }
@@ -1545,7 +1548,18 @@ async function generateHtmlContent(data) {
       const now=new Date(); const pad=n=>String(n).padStart(2,'0'); const date = '' + now.getFullYear() + pad(now.getMonth()+1) + pad(now.getDate()); const domain=(location.hostname||'threads');
       showToast('Downloading ' + total + ' images...');
       (function next(){ if(idx>=total){ showToast('Done'); return; } const u=urls[idx++];
-        try{ const m=(u.split('?')[0].split('#')[0].match(/\.(jpg|jpeg|png|gif|webp)$/i)); const ext=(m?m[0]:'.jpg'); const a=document.createElement('a'); a.href=u; const fname = domain + '_' + author + '_' + date + '_' + String(idx).padStart(2,'0') + (ext.startsWith('.') ? '' : '.') + ext.replace(/^\./,''); a.download=fname; a.style.display='none'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){ console.error('Image download failed', e); }
+        try{
+          const m=(u.split('?')[0].split('#')[0].match(/\.(jpg|jpeg|png|gif|webp)$/i));
+          const ext=(m?m[0]:'.jpg');
+          const fname = domain + '_' + author + '_' + date + '_' + String(idx).padStart(2,'0') + (ext.startsWith('.') ? '' : '.') + ext.replace(/^\./,'');
+          // Ask background to download (more reliable for cross-origin)
+          chrome.runtime.sendMessage({ action:'downloadImageUrl', url:u, filename: fname }, (resp)=>{
+            if (!resp || resp.success !== true){
+              // Fallback to anchor method
+              try{ const a=document.createElement('a'); a.href=u; a.download=fname; a.style.display='none'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){ console.error('Anchor download failed', e); }
+            }
+          });
+        }catch(e){ console.error('Image download failed', e); }
         setTimeout(next,250); })();
     }
 
@@ -2211,6 +2225,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // Return true to indicate we'll send a response asynchronously
     return true;
+  } else if (request.action === 'downloadImageUrl') {
+    try {
+      const { url, filename } = request;
+      if (!url || !/^https?:\/\//i.test(url)) {
+        safeResponse({ success: false, error: 'Invalid URL' });
+        return false;
+      }
+      chrome.downloads.download({ url, filename, saveAs: false }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          safeResponse({ success: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        safeResponse({ success: true, downloadId });
+      });
+      return true;
+    } catch (e) {
+      safeResponse({ success: false, error: e.message });
+      return false;
+    }
   } else if (request.action === 'toggleSimplifiedPatterns') {
     // Toggle the pattern set to use
     useSimplifiedPatterns = request.value;

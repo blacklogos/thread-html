@@ -65,6 +65,25 @@
       eq(md.trim().endsWith('A\nB'), true);
     });
 
+    // Edit mode helper
+    test('toggleContentEditable toggles attribute', ()=>{
+      const el = document.createElement('div');
+      eq(RuntimeUtils.toggleContentEditable(el, true), true);
+      eq(el.getAttribute('contenteditable'), 'true');
+      eq(RuntimeUtils.toggleContentEditable(el, false), false);
+      eq(el.getAttribute('contenteditable'), 'false');
+    });
+
+    // Download plan from HTML with picture/srcset
+    test('buildImageDownloadPlan creates filenames preserving extension', ()=>{
+      const html = '<picture><source srcset="https://a/b.webp 320w, https://a/c.webp 640w"><img src="https://a/fallback.jpg"></picture>';
+      const plan = RuntimeUtils.buildImageDownloadPlan(html, '@user', 'threads.net', '20250101');
+      if (!plan.length) throw new Error('no plan items');
+      // Ensure names look like domain_user_YYYYMMDD_01.ext
+      const ok = /^threads\.net_user_20250101_\d{2}\.(webp|jpg)$/.test(plan[0].filename);
+      eq(ok, true);
+    });
+
     document.addEventListener('DOMContentLoaded', run);
   </script>
 </body>

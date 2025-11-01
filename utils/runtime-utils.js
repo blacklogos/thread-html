@@ -111,4 +111,31 @@ window.RuntimeUtils = {
   applyCleaningPatterns,
   heuristicClean,
   buildMarkdown,
+  // Utility helpers for preview features testing
+  toggleContentEditable(el, enable){
+    if (!el) return false;
+    if (typeof enable === 'boolean') {
+      el.setAttribute('contenteditable', enable ? 'true' : 'false');
+    } else {
+      const on = el.getAttribute('contenteditable') === 'true';
+      el.setAttribute('contenteditable', on ? 'false' : 'true');
+    }
+    return el.getAttribute('contenteditable') === 'true';
+  },
+  buildImageDownloadPlan(html, authorUsername='unknown', domain='threads', dateStr='00000000'){
+    const urls = collectImageUrls(html);
+    const author = String(authorUsername||'').replace(/^@/,'') || 'unknown';
+    const plan = [];
+    let idx = 0;
+    urls.forEach(u=>{
+      idx += 1;
+      // Try to preserve extension
+      const m = (u.split('?')[0].split('#')[0].match(/\.(jpg|jpeg|png|gif|webp)$/i));
+      const ext = m ? (m[0].toLowerCase()) : '.jpg';
+      const n = String(idx).padStart(2,'0');
+      const fname = `${domain}_${author}_${dateStr}_${n}${ext.startsWith('.')?'':'.'}${ext.replace(/^\./,'')}`;
+      plan.push({ url: u, filename: fname });
+    });
+    return plan;
+  }
 };
