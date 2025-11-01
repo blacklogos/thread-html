@@ -31,6 +31,20 @@
       const html = '<img src="https://a/b.jpg"><div>[Image: https://x/y.png]</div><img src="/relative.png">';
       deq(RuntimeUtils.collectImageUrls(html).sort(), ['https://a/b.jpg','https://x/y.png'].sort());
     });
+    test('collectImageUrls: handles img srcset picking highest candidate', ()=>{
+      const html = '<img srcset="https://cdn/img-320.jpg 320w, https://cdn/img-640.jpg 640w" />';
+      deq(RuntimeUtils.collectImageUrls(html), ['https://cdn/img-640.jpg']);
+    });
+    test('collectImageUrls: collects from <picture><source srcset> and <img>', ()=>{
+      const html = '<picture class="x87ps6o">' +
+        '<source srcset="https://i1.webp 320w, https://i2.webp 640w" type="image/webp">' +
+        '<img src="https://fallback.jpg" alt="" />' +
+      '</picture>';
+      const res = RuntimeUtils.collectImageUrls(html).sort();
+      // Either highest from source or img fallback should be present
+      const ok = res.includes('https://i2.webp') || res.includes('https://fallback.jpg');
+      if (!ok) throw new Error('expected image URL from picture/source or img');
+    });
     test('sanitizeFilename: produces safe name', ()=>{
       const name = sanitizeFilename('@user.name','3','20250101','www.threads.com');
       eq(RuntimeUtils.sanitizeFilename('@user.name','3','20250101','www.threads.com'), 'www.threads.com_user.name_20250101_03.jpg');

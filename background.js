@@ -1458,12 +1458,14 @@ async function generateHtmlContent(data) {
         });
     }
 
-    // New robust copy function used by the button
+    // New robust copy function used by the button (block-aware)
     function copyText2() {
       const article = document.querySelector('.article');
       if (!article) return;
       let html = article.innerHTML || '';
       html = html.replace(/<br\s*\/?>(\s*)/gi, '\n');
+      html = html.replace(/<\/(?:p|div|section|article|li|ul|ol|h[1-6])>/gi, '$&\n\n');
+      html = html.replace(/<(?:p|div|section|article|li|ul|ol|h[1-6])[^>]*>/gi, '');
       const div = document.createElement('div');
       div.innerHTML = html;
       let text = (div.textContent || '').replace(/\r/g,'').replace(/\n{3,}/g,'\n\n').trim();
@@ -1482,13 +1484,62 @@ async function generateHtmlContent(data) {
     // Helper toast
     function showToast(msg){ const t=document.createElement('div'); t.className='download-info'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>{ t.remove && t.remove(); }, 3000); }
 
-    // Download images from preview content
+    // Simple contenteditable Edit Mode toggle
+    function toggleEditMode(){
+      const article = document.querySelector('.article');
+      if (!article) return;
+      const enabled = article.getAttribute('contenteditable') === 'true';
+      if (!enabled){
+        article.setAttribute('contenteditable','true');
+        const banner = document.createElement('div');
+        banner.className = 'edit-mode-indicator';
+        banner.textContent = 'Edit Mode: type to modify text. Click "Exit Edit Mode" to finish.';
+        document.body.appendChild(banner);
+        const exitBtn = document.createElement('button');
+        exitBtn.textContent = 'Exit Edit Mode';
+        exitBtn.className = 'action-button edit-mode-button';
+        exitBtn.style.position='fixed'; exitBtn.style.bottom='10px'; exitBtn.style.right='10px';
+        exitBtn.onclick = function(){
+          article.setAttribute('contenteditable','false');
+          if (banner.parentNode) banner.parentNode.removeChild(banner);
+          if (exitBtn.parentNode) exitBtn.parentNode.removeChild(exitBtn);
+        };
+        document.body.appendChild(exitBtn);
+      } else {
+        article.setAttribute('contenteditable','false');
+        const banner = document.querySelector('.edit-mode-indicator'); if (banner) banner.remove();
+        const exitBtn = Array.from(document.querySelectorAll('.edit-mode-button')).pop(); if (exitBtn) exitBtn.remove();
+      }
+    }
+
+    // Download images from preview content (supports <picture>, srcset)
     function downloadImages(){
       const article = document.querySelector('.article');
       if (!article){ showToast('No content'); return; }
-      const imgs = Array.from(article.querySelectorAll('img[src]')).map(i=>i.getAttribute('src')).filter(u=>/^https?:\/\//i.test(u));
+      const urlsSet = new Set();
+
+      const pickFromSrcset = (srcset) => {
+        try { const parts=String(srcset).split(',').map(s=>s.trim()).filter(Boolean); if(!parts.length) return ''; return parts[parts.length-1].split(/\s+/)[0]||''; } catch{ return ''; }
+      };
+
+      // img: prefer currentSrc, then srcset, then src
+      Array.from(article.querySelectorAll('img')).forEach(img => {
+        let u = '';
+        if (img.currentSrc) u = img.currentSrc;
+        if (!u && img.getAttribute('srcset')) u = pickFromSrcset(img.getAttribute('srcset'));
+        if (!u) u = img.getAttribute('src') || '';
+        if (/^https?:\/\//i.test(u)) urlsSet.add(u);
+      });
+
+      // picture > source[srcset]
+      Array.from(article.querySelectorAll('picture source[srcset]')).forEach(src => {
+        const u = pickFromSrcset(src.getAttribute('srcset'));
+        if (/^https?:\/\//i.test(u)) urlsSet.add(u);
+      });
+
       const markers = (article.innerHTML.match(/\[Image:\s*(https?:\/\/[^\]\s]+)\]/gi)||[]).map(m=>m.replace(/^\[Image:\s*/i,'').replace(/\]$/,'').trim());
-      const urls = Array.from(new Set(imgs.concat(markers)));
+      markers.forEach(u=>{ if(/^https?:\/\//i.test(u)) urlsSet.add(u); });
+      const urls = Array.from(urlsSet);
       if (!urls.length){ showToast('No images found'); return; }
       let idx=0; const total=urls.length; const author=(document.querySelector('.author-username')?.textContent||'unknown').replace(/^@/,'');
       const now=new Date(); const pad=n=>String(n).padStart(2,'0'); const date = '' + now.getFullYear() + pad(now.getMonth()+1) + pad(now.getDate()); const domain=(location.hostname||'threads');
@@ -1694,10 +1745,7 @@ async function generateHtmlContent(data) {
       const authorUsername = document.querySelector('.author-username')?.textContent || '@unknown';
       const threadInfo = document.querySelector('.thread-info')?.textContent || '';
       
-      const header = 
-        \`# Thread by \${authorName} (\${authorUsername})\\n\\n\` +
-        \`\${threadInfo}\\n\\n\` +
-        \`---\\n\\n\`;
+      const header = '# Thread by ' + authorName + ' (' + authorUsername + ')\\n\\n' + threadInfo + '\\n\\n---\\n\\n';
       
       markdown = header + markdown;
       
@@ -1712,7 +1760,7 @@ async function generateHtmlContent(data) {
       const now = new Date();
       const timestamp = now.toISOString().replace(/:/g, '-').replace(/\\..+/, '');
       
-      a.download = \`thread_\${authorUsername.replace('@', '')}_\${timestamp}.md\`;
+      a.download = 'thread_' + authorUsername.replace('@','') + '_' + timestamp + '.md';
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
@@ -1800,7 +1848,7 @@ async function generateHtmlContent(data) {
       <button class="action-button copy-button" onclick="copyText2()">Copy Text</button>
       <button class="action-button" onclick="window.print()">Save PDF</button>
       <button class="action-button" onclick="downloadImages()">Download Images</button>
-      <button class="action-button" onclick="enableEditMode()">Edit Mode</button>
+      <button class="action-button" onclick="toggleEditMode()">Edit Mode</button>
       <button class="action-button" onclick="saveAsMarkdown()">Save as MD</button>
     </div>
     

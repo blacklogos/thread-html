@@ -20,12 +20,36 @@ function collectImageUrls(html) {
   const urls = new Set();
   const div = document.createElement('div');
   div.innerHTML = String(html || '');
-  div.querySelectorAll('img[src]').forEach(img => {
-    const u = img.getAttribute('src') || '';
+
+  // Helper to parse a srcset string and pick the last (often highest res)
+  const pickFromSrcset = (srcset) => {
+    try {
+      const parts = String(srcset).split(',').map(s => s.trim()).filter(Boolean);
+      if (!parts.length) return '';
+      const last = parts[parts.length - 1].split(/\s+/)[0];
+      return last || '';
+    } catch { return ''; }
+  };
+
+  // <img> tags: prefer currentSrc, then srcset, then src
+  div.querySelectorAll('img').forEach(img => {
+    let u = '';
+    if (img.currentSrc) u = img.currentSrc;
+    if (!u && img.getAttribute('srcset')) u = pickFromSrcset(img.getAttribute('srcset'));
+    if (!u) u = img.getAttribute('src') || '';
     if (/^https?:\/\//i.test(u)) urls.add(u);
   });
+
+  // <source srcset> inside <picture>
+  div.querySelectorAll('source[srcset]').forEach(src => {
+    const u = pickFromSrcset(src.getAttribute('srcset'));
+    if (/^https?:\/\//i.test(u)) urls.add(u);
+  });
+
+  // Markers like [Image: URL]
   (String(html || '').match(/\[Image:\s*(https?:\/\/[^\]\s]+)\]/gi) || [])
-    .forEach(m => { const u = m.replace(/^\[Image:\s*/i,'').replace(/\]$/,'').trim(); urls.add(u); });
+    .forEach(m => { const u = m.replace(/^\[Image:\s*/i,'').replace(/\]$/,'').trim(); if (/^https?:\/\//i.test(u)) urls.add(u); });
+
   return Array.from(urls);
 }
 
