@@ -1,5 +1,7 @@
 // Initialize the cleaning patterns
 let cleaningPatterns = [];
+// Toggle to control simplified/aggressive cleaning
+let useSimplifiedPatterns = false;
 
 // Load patterns from JSON file using fetch with better error handling
 function loadPatternsFromJson() {
