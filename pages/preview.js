@@ -164,7 +164,7 @@
       const list = document.getElementById('imageList');
       list.innerHTML = '';
       if (urls.length){
-        urls.forEach(u=>{ const li=document.createElement('li'); const a=document.createElement('a'); a.href=u; a.target='_blank'; a.rel='noopener noreferrer'; a.textContent=u; li.appendChild(a); list.appendChild(li); });
+        urls.forEach((u, idx)=>{ const li=document.createElement('li'); const a=document.createElement('a'); a.href=u; a.target='_blank'; a.rel='noopener noreferrer'; a.textContent='image ' + String(idx+1); li.appendChild(a); list.appendChild(li); });
         section.style.display='block';
         state.threadImageUrls = urls.slice();
       } else {
@@ -177,7 +177,6 @@
   function bindUI(){
     document.getElementById('btnCopy').addEventListener('click', copyText2);
     document.getElementById('btnPdf').addEventListener('click', ()=> window.print());
-    document.getElementById('btnImages').addEventListener('click', downloadImages);
     document.getElementById('btnEdit').addEventListener('click', toggleEditMode);
     document.getElementById('btnMd').addEventListener('click', saveAsMarkdown);
     const premiumBtn = document.getElementById('btnImagesPremium');

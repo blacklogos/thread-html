@@ -1131,14 +1131,13 @@ async function generateHtmlContent(data) {
 
   var threadContentHtml = finalPosts.map(postToHtml).join('<br><br>');
 
-  // Collect all image URLs across posts (dedupe)
+  // Collect all image URLs across posts (dedupe; keep params intact)
   var imageSet = new Set();
   try {
     (posts || []).forEach(function(p){
       (p.mediaUrls || []).forEach(function(u){
         if (typeof u === 'string' && /^https?:\/\//i.test(u)) {
-          var nu = u.split('#')[0].split('?')[0];
-          imageSet.add(nu);
+          imageSet.add(u);
         }
       });
     });
@@ -1147,7 +1146,7 @@ async function generateHtmlContent(data) {
   try {
     (threadContent.match(/\[Image:\s*(https?:\/\/[^\]\s]+)\]/gi) || []).forEach(function(m){
       var u = m.replace(/^\[Image:\s*/i,'').replace(/\]$/,'').trim();
-      if (/^https?:\/\//i.test(u)) imageSet.add(u.split('#')[0].split('?')[0]);
+      if (/^https?:\/\//i.test(u)) imageSet.add(u);
     });
   } catch(e) {}
   var imagesAll = Array.from(imageSet);
