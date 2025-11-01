@@ -1074,6 +1074,33 @@ async function generateHtmlContent(data) {
   // Generate a unique timestamp for this export
   const timestamp = Date.now();
   
+  // Build threadContentHtml by expanding media markers to HTML
+  let threadContentHtml = threadContent.replace(/\[Image: (https?:\/\/[^\]]+)\]/g,
+    '<img src="$1" class="post-image" alt="Thread image" loading="lazy">'
+  );
+  threadContentHtml = threadContentHtml.replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, function(match, url){
+    var videoId = '';
+    if (url.indexOf('youtu.be/') !== -1) {
+      videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
+    } else if (url.indexOf('youtube.com/watch') !== -1) {
+      try { var u = new URL(url); videoId = u.searchParams.get('v') || ''; } catch(e) {}
+    }
+    if (videoId) {
+      return (
+        '<div class="youtube-container">' +
+          '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer">' +
+            '<div class="youtube-thumbnail">' +
+              '<img src="https://img.youtube.com/vi/' + videoId + '/0.jpg" alt="YouTube Thumbnail" loading="lazy">' +
+              '<div class="youtube-play-icon">▶</div>' +
+            '</div>' +
+            '<span class="link-text">Watch on YouTube</span>' +
+          '</a>' +
+        '</div>'
+      );
+    }
+    return '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ' + url + '</span></a>';
+  });
+
   console.log('Generating HTML content for author:', authorName);
   const htmlContent = `
 <!DOCTYPE html>
@@ -1918,11 +1945,24 @@ async function generateHtmlContent(data) {
     htmlContent,
     filename: `thread_${sanitizedAuthorUsername}_${timestamp}.html`,
     sanitizedAuthorUsername,
-    timestamp
+    timestamp,
+    renderData: {
+      authorName: authorName,
+      authorUsername: authorUsername,
+      avatarUrl: base64Avatar,
+      avatarColor: avatarColor,
+      authorInitials: authorInitials,
+      originalDate: originalDate,
+      totalWords: totalWords,
+      readTimeMinutes: readTimeMinutes,
+      threadContentHtml: threadContentHtml
+    }
   };
 } // End of generateHtmlContent function
 
 // Listen for messages from the extension
+let lastPreviewData = null;
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Create timeout safety mechanism
   let responseTimeout = setTimeout(() => {
@@ -1974,109 +2014,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           throw new Error('No data provided for preview');
         }
         
-        // Generate HTML content
-        const { htmlContent, filename } = await generateHtmlContent(request.data);
-        
-        // Create a URL for the preview using safer method
-        let previewUrl;
-        try {
-          // Always prefer data URL for preview when possible for better compatibility
-          if (htmlContent.length < 500000) { // Reduced limit to 500KB to avoid encoding issues
-            try {
-              // Use a more reliable sanitization approach
-              const sanitizedContent = sanitizeForEncoding(htmlContent);
-              
-              // Try to encode in chunks to avoid malformed URI errors
-              let encodedContent = '';
-              const chunkSize = 100000; // Process in 100KB chunks
-              
-              for (let i = 0; i < sanitizedContent.length; i += chunkSize) {
-                const chunk = sanitizedContent.substring(i, i + chunkSize);
-                try {
-                  encodedContent += encodeURIComponent(chunk);
-                } catch (chunkError) {
-                  console.error('Error encoding chunk:', chunkError);
-                  // Skip problematic chunks but continue
-                  encodedContent += encodeURIComponent('[Content encoding error]');
-                }
-              }
-              
-              previewUrl = 'data:text/html;charset=utf-8,' + encodedContent;
-            } catch (encodeError) {
-              console.error('Failed to encode content for data URL:', encodeError);
-              
-              // Fallback to direct navigation with fetched content
-              throw new Error('Data URL encoding failed, using tab navigation fallback');
-            }
-          } else {
-            // For very large content, we'll need to use a server-style approach
-            throw new Error('Content too large for data URL encoding');
+        // Generate content and preview payload
+        const { filename, renderData, htmlContent } = await generateHtmlContent(request.data);
+
+        // Open extension preview page
+        const url = chrome.runtime.getURL('pages/preview.html');
+        chrome.tabs.create({ url, active: true }, (tab) => {
+          if (chrome.runtime.lastError) {
+            safeResponse({ success: false, error: 'Error creating tab: ' + chrome.runtime.lastError.message });
+            return;
           }
-          
-          // Create a new tab with the preview
-          chrome.tabs.create({ url: previewUrl, active: true }, (tab) => {
-            if (chrome.runtime.lastError) {
-              safeResponse({
-                success: false,
-                error: 'Error creating tab: ' + chrome.runtime.lastError.message
-              });
-              return;
-            }
-            
-            // Store reference to this tab for download functionality
-            previewTabs[tab.id] = {
-              htmlContent: htmlContent,
-              filename: filename,
-              originalData: request.data
-            };
-            
-            // Send a message to the popup that preview is ready
-            safeResponse({
-              success: true,
-              previewTabId: tab.id,
-              message: 'Preview opened in new tab'
-            });
-          });
-        } catch (error) {
-          console.error('Preview URL creation error:', error);
-          
-          // Ultimate fallback - use a download approach instead of preview
-          try {
-            // Create a safe fallback by creating a temp file and opening it
-            chrome.downloads.download({
-              url: 'data:text/html;charset=utf-8,' + encodeURIComponent('<html><body><p>Loading preview...</p></body></html>'),
-              filename: filename,
-              saveAs: false
-            }, (downloadId) => {
-              if (chrome.runtime.lastError) {
-                safeResponse({
-                  success: false,
-                  error: 'Download fallback failed: ' + chrome.runtime.lastError.message
-                });
-                return;
-              }
-              
-              // Store reference to the content
-              previewTabs[downloadId] = {
-                htmlContent: htmlContent,
-                filename: filename,
-                originalData: request.data
-              };
-              
-              safeResponse({
-                success: true,
-                previewTabId: downloadId,
-                message: 'Preview downloaded, please open the file'
-              });
-            });
-          } catch (fallbackError) {
-            // If everything fails, inform the user
-            safeResponse({
-              success: false,
-              error: 'Unable to create preview: ' + error.message + '. ' + fallbackError.message
-            });
-          }
-        }
+
+          // Store references
+          previewTabs[tab.id] = { htmlContent, filename, originalData: request.data, renderData };
+          lastPreviewData = renderData;
+
+          // Notify popup
+          safeResponse({ success: true, previewTabId: tab.id, message: 'Preview opened in new tab' });
+
+          // Try to push init to the page (broadcast)
+          try { chrome.runtime.sendMessage({ type: 'preview:init', payload: renderData }); } catch(e) {}
+        });
       } catch (error) {
         console.error('Preview error:', error);
         safeResponse({
@@ -2285,6 +2243,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
     }
   } else if (request.action === 'toggleSimplifiedPatterns') {
+    // existing handler continues
+  } else if (request.action === 'proxyFetchImage') {
+    (async () => {
+      try {
+        if (!request.url || typeof request.url !== 'string') {
+          throw new Error('Invalid URL');
+        }
+        const resp = await fetch(request.url, { cache: 'no-store', credentials: 'omit' });
+        const type = resp.headers.get('content-type') || '';
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (type.indexOf('image/') !== 0) {
+          // Still allow but warn
+          console.warn('Proxy fetch non-image content-type:', type);
+        }
+        const buf = await resp.arrayBuffer();
+        // Optional size cap ~10MB
+        if (buf.byteLength > 10 * 1024 * 1024) {
+          throw new Error('Image too large');
+        }
+        safeResponse({ ok: true, buffer: buf, type });
+      } catch (e) {
+        console.error('proxyFetchImage error:', e);
+        safeResponse({ ok: false, error: String(e && e.message || e) });
+      }
+    })();
+    return true;
+  } else if (request.action === 'previewReady') {
+    try {
+      if (lastPreviewData) {
+        chrome.runtime.sendMessage({ type: 'preview:init', payload: lastPreviewData });
+        safeResponse({ success: true });
+      } else {
+        safeResponse({ success: false, error: 'No preview data available' });
+      }
+    } catch (e) {
+      safeResponse({ success: false, error: e.message });
+    }
+    return true;
     // Toggle the pattern set to use
     useSimplifiedPatterns = request.value;
     // Reload patterns with the new setting

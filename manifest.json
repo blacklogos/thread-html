@@ -10,7 +10,9 @@
   ],
   "host_permissions": [
     "*://*.threads.com/*",
-    "*://*.threads.net/*"
+    "*://*.threads.net/*",
+    "*://*.fbcdn.net/*",
+    "*://*.cdninstagram.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
