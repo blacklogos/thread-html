@@ -1484,6 +1484,12 @@ async function generateHtmlContent(data) {
       if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(onSuccess).catch(fallback); } else { fallback(); }
     }
 
+    // Expose handlers on window to be callable from onclick attributes
+    window.copyText2 = copyText2;
+    window.downloadImages = downloadImages;
+    window.toggleEditMode = toggleEditMode;
+    window.saveAsMarkdown = saveAsMarkdown;
+
     // Helper toast
     function showToast(msg){ const t=document.createElement('div'); t.className='download-info'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>{ t.remove && t.remove(); }, 3000); }
 
