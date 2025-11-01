@@ -7,7 +7,7 @@ let useSimplifiedPatterns = false;
 function loadPatternsFromJson() {
   console.log('Attempting to load cleaning patterns from JSON...');
   
-  fetch('./utils/cleaning-patterns.json')
+  fetch(chrome.runtime.getURL('utils/cleaning-patterns.json'))
     .then(response => {
       if (!response.ok) {
         throw new Error(`Failed to load patterns: ${response.status} ${response.statusText}`);
@@ -1491,10 +1491,10 @@ async function generateHtmlContent(data) {
       const urls = Array.from(new Set(imgs.concat(markers)));
       if (!urls.length){ showToast('No images found'); return; }
       let idx=0; const total=urls.length; const author=(document.querySelector('.author-username')?.textContent||'unknown').replace(/^@/,'');
-      const now=new Date(); const pad=n=>String(n).padStart(2,'0'); const date=`${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`; const domain=(location.hostname||'threads');
-      showToast(`Downloading ${total} images...`);
+      const now=new Date(); const pad=n=>String(n).padStart(2,'0'); const date = '' + now.getFullYear() + pad(now.getMonth()+1) + pad(now.getDate()); const domain=(location.hostname||'threads');
+      showToast('Downloading ' + total + ' images...');
       (function next(){ if(idx>=total){ showToast('Done'); return; } const u=urls[idx++];
-        try{ const m=(u.split('?')[0].split('#')[0].match(/\.(jpg|jpeg|png|gif|webp)$/i)); const ext=(m?m[0]:'.jpg'); const a=document.createElement('a'); a.href=u; a.download=`${domain}_${author}_${date}_${String(idx).padStart(2,'0')}${ext.startsWith('.')?'':'.'}${ext.replace(/^\./,'')}`; a.style.display='none'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){ console.error('Image download failed', e); }
+        try{ const m=(u.split('?')[0].split('#')[0].match(/\.(jpg|jpeg|png|gif|webp)$/i)); const ext=(m?m[0]:'.jpg'); const a=document.createElement('a'); a.href=u; const fname = domain + '_' + author + '_' + date + '_' + String(idx).padStart(2,'0') + (ext.startsWith('.') ? '' : '.') + ext.replace(/^\./,''); a.download=fname; a.style.display='none'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){ console.error('Image download failed', e); }
         setTimeout(next,250); })();
     }
 
@@ -1775,21 +1775,22 @@ async function generateHtmlContent(data) {
         }
         
         if (videoId) {
-          // Return YouTube thumbnail with link as fallback
-          return `
-            <div class="youtube-container">
-              <a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer">
-                <div class="youtube-thumbnail">
-                  <img src="https://img.youtube.com/vi/${videoId}/0.jpg" alt="YouTube Thumbnail" loading="lazy" 
-                       onerror="this.src='https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/25b6.png'; this.style.width='72px'; this.style.height='72px';">
-                  <div class="youtube-play-icon">▶</div>
-                </div>
-                <span class="link-text">Watch on YouTube</span>
-              </a>
-            </div>`;
+          // Return YouTube thumbnail with link as fallback (avoid backticks in outer template)
+          return (
+            '<div class="youtube-container">' +
+              '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer">' +
+                '<div class="youtube-thumbnail">' +
+                  '<img src="https://img.youtube.com/vi/' + videoId + '/0.jpg" alt="YouTube Thumbnail" loading="lazy" ' +
+                       'onerror="this.src=\'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/25b6.png\'; this.style.width=\'72px\'; this.style.height=\'72px\';">' +
+                  '<div class="youtube-play-icon">▶</div>' +
+                '</div>' +
+                '<span class="link-text">Watch on YouTube</span>' +
+              '</a>' +
+            '</div>'
+          );
         } else {
           // Fallback to regular link
-          return `<a href="${url}" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ${url}</span></a>`;
+          return '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ' + url + '</span></a>';
         }
       })
     }
