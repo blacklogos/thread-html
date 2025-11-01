@@ -1456,6 +1456,46 @@ async function generateHtmlContent(data) {
         });
     }
 
+    // New robust copy function used by the button
+    function copyText2() {
+      const article = document.querySelector('.article');
+      if (!article) return;
+      let html = article.innerHTML || '';
+      html = html.replace(/<br\s*\/?>(\s*)/gi, '\n');
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      let text = (div.textContent || '').replace(/\r/g,'').replace(/\n{3,}/g,'\n\n').trim();
+      function onSuccess(){
+        const button = document.querySelector('.copy-button');
+        if (button){ const t=button.textContent; button.textContent='Copied!'; setTimeout(()=>button.textContent=t,2000); }
+      }
+      function fallback(){
+        try { const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+          document.body.appendChild(ta); ta.focus(); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta);
+          if(!ok) throw new Error('execCommand copy failed'); onSuccess(); } catch(e){ console.error('Copy failed', e); alert('Failed to copy text.'); }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(onSuccess).catch(fallback); } else { fallback(); }
+    }
+
+    // Helper toast
+    function showToast(msg){ const t=document.createElement('div'); t.className='download-info'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>{ t.remove && t.remove(); }, 3000); }
+
+    // Download images from preview content
+    function downloadImages(){
+      const article = document.querySelector('.article');
+      if (!article){ showToast('No content'); return; }
+      const imgs = Array.from(article.querySelectorAll('img[src]')).map(i=>i.getAttribute('src')).filter(u=>/^https?:\/\//i.test(u));
+      const markers = (article.innerHTML.match(/\[Image:\s*(https?:\/\/[^\]\s]+)\]/gi)||[]).map(m=>m.replace(/^\[Image:\s*/i,'').replace(/\]$/,'').trim());
+      const urls = Array.from(new Set(imgs.concat(markers)));
+      if (!urls.length){ showToast('No images found'); return; }
+      let idx=0; const total=urls.length; const author=(document.querySelector('.author-username')?.textContent||'unknown').replace(/^@/,'');
+      const now=new Date(); const pad=n=>String(n).padStart(2,'0'); const date=`${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`; const domain=(location.hostname||'threads');
+      showToast(`Downloading ${total} images...`);
+      (function next(){ if(idx>=total){ showToast('Done'); return; } const u=urls[idx++];
+        try{ const m=(u.split('?')[0].split('#')[0].match(/\.(jpg|jpeg|png|gif|webp)$/i)); const ext=(m?m[0]:'.jpg'); const a=document.createElement('a'); a.href=u; a.download=`${domain}_${author}_${date}_${String(idx).padStart(2,'0')}${ext.startsWith('.')?'':'.'}${ext.replace(/^\./,'')}`; a.style.display='none'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){ console.error('Image download failed', e); }
+        setTimeout(next,250); })();
+    }
+
     // Interactive editing mode
     function enableEditMode() {
       const article = document.querySelector('.article');
@@ -1754,8 +1794,9 @@ async function generateHtmlContent(data) {
     </div>
     
     <div class="action-buttons">
-      <button class="action-button copy-button" onclick="copyText()">Copy Text</button>
+      <button class="action-button copy-button" onclick="copyText2()">Copy Text</button>
       <button class="action-button" onclick="window.print()">Save PDF</button>
+      <button class="action-button" onclick="downloadImages()">Download Images</button>
       <button class="action-button" onclick="enableEditMode()">Edit Mode</button>
       <button class="action-button" onclick="saveAsMarkdown()">Save as MD</button>
     </div>
