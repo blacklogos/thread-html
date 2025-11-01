@@ -1468,20 +1468,52 @@ async function generateHtmlContent(data) {
       html = html.replace(/<(?:p|div|section|article|li|ul|ol|h[1-6])[^>]*>/gi, '');
       const div = document.createElement('div');
       div.innerHTML = html;
-      let text = (div.textContent || '').replace(/\r/g,'').replace(/\n{3,}/g,'\n\n').trim();
-      function onSuccess(){
+      let text = (div.textContent || '')
+        .replace(/\r/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+      function onSuccess() {
         const button = document.querySelector('.copy-button');
-        if (button){ const t=button.textContent; button.textContent='Copied!'; setTimeout(()=>button.textContent=t,2000); }
+        if (button) {
+          const t = button.textContent;
+          button.textContent = 'Copied!';
+          setTimeout(function () { button.textContent = t; }, 2000);
+        }
       }
-      function fallback(){
-        try { const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-          document.body.appendChild(ta); ta.focus(); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta);
-          if(ok){ onSuccess(); return; } } catch(e){ /* continue to next fallback */ }
+
+      function fallback() {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          if (ok) { onSuccess(); return; }
+        } catch (e) { /* continue to next fallback */ }
         // Final fallback: select article text and copy
-        try { const sel = window.getSelection(); const range=document.createRange(); range.selectNodeContents(article); sel.removeAllRanges(); sel.addRange(range); const ok2=document.execCommand('copy'); sel.removeAllRanges(); if(ok2){ onSuccess(); return; } } catch(e2) {}
+        try {
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(article);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          const ok2 = document.execCommand('copy');
+          sel.removeAllRanges();
+          if (ok2) { onSuccess(); return; }
+        } catch (e2) {}
         alert('Failed to copy text.');
       }
-      if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(onSuccess).catch(fallback); } else { fallback(); }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(fallback);
+      } else {
+        fallback();
+      }
     }
 
     // Expose handlers on window to be callable from onclick attributes
