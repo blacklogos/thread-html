@@ -1098,38 +1098,33 @@ async function generateHtmlContent(data) {
   // Generate a unique timestamp for this export
   const timestamp = Date.now();
   
-  // Build threadContentHtml by expanding media markers to HTML
-  // Build HTML for a post (remove specific UX labels like "Hàng đầu")
-  function postToHtml(txt) {
-    try { txt = txt.split('\n').map(function(l){ return l.replace(/Hàng đầu/g, '').trim(); }).join('\n'); } catch(e) {}
-    var h = (txt || '').split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; }).join('<br>');
-    h = h.replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy">');
-    h = h.replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, function(_m, url){
-    var videoId = '';
-    if (url.indexOf('youtu.be/') !== -1) {
-      videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
-    } else if (url.indexOf('youtube.com/watch') !== -1) {
-      try { var u = new URL(url); videoId = u.searchParams.get('v') || ''; } catch(e) {}
-    }
-      if (videoId) {
-        return (
-          '<div class="youtube-container">' +
-            '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer">' +
-              '<div class="youtube-thumbnail">' +
-                '<img src="https://img.youtube.com/vi/' + videoId + '/0.jpg" alt="YouTube Thumbnail" loading="lazy">' +
-                '<div class="youtube-play-icon">▶</div>' +
-              '</div>' +
-              '<span class="link-text">Watch on YouTube</span>' +
-            '</a>' +
-          '</div>'
-        );
+  // Build per-post HTML with images from posts[i].mediaUrls (keep URL params)
+  var postHtmls = [];
+  try {
+    for (var i = 0; i < cleanedPosts.length; i++) {
+      var rawTxt = cleanedPosts[i] || '';
+      // Strip markers and UX label "Hàng đầu"
+      var txt = rawTxt
+        .replace(/\[Image:\s*https?:\/\/[^\]]+\]\s*/gi, '')
+        .replace(/\[YouTube:\s*https?:\/\/[^\]]+\]\s*/gi, '')
+        .replace(/\[Link:\s*https?:\/\/[^\]]+\]\s*/gi, '')
+        .replace(/Hàng đầu/gi, '')
+        .trim();
+      var htmlText = txt.split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; }).join('<br>');
+      var seen = new Set();
+      var mediaArr = (posts && posts[i] && Array.isArray(posts[i].mediaUrls)) ? posts[i].mediaUrls : [];
+      var imgs = [];
+      for (var j = 0; j < mediaArr.length; j++) {
+        var u = mediaArr[j];
+        if (typeof u === 'string' && /^https?:\/\//i.test(u) && !seen.has(u)) { seen.add(u); imgs.push(u); }
       }
-      return '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ' + url + '</span></a>';
-    });
-    return h;
-  }
-
-  var threadContentHtml = finalPosts.map(postToHtml).join('<br><br>');
+      var mediaHtml = imgs.map(function(u){ return '<div class="post-media"><img src="' + u + '" class="post-image" alt="" loading="lazy" referrerpolicy="no-referrer"></div>'; }).join('');
+      var combined = htmlText;
+      if (mediaHtml) combined = (combined ? combined + '<br>' : '') + mediaHtml;
+      if (combined) postHtmls.push(combined);
+    }
+  } catch (genErr) { console.error('Error building per-post HTML:', genErr); }
+  var threadContentHtml = postHtmls.join('<br><br>');
 
   // Collect all image URLs across posts (dedupe; keep params intact)
   var imageSet = new Set();
@@ -1941,39 +1936,7 @@ async function generateHtmlContent(data) {
       </div>
     </div>
     
-    <div class="article">${threadContent
-      .replace(/\[Image: (https?:\/\/[^\]]+)\]/g, '<img src="$1" class="post-image" alt="Thread image" loading="lazy" onerror="this.src=\'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/1f5bc.png\'; this.style.width=\'72px\'; this.style.height=\'72px\';">')
-      .replace(/\[YouTube: (https?:\/\/[^\]]+)\]/g, (match, url) => {
-        // Extract video ID for YouTube embeds
-        let videoId = '';
-        if (url.includes('youtu.be/')) {
-          videoId = url.split('youtu.be/')[1].split(/[?#]/)[0];
-        } else if (url.includes('youtube.com/watch')) {
-          const urlObj = new URL(url);
-          videoId = urlObj.searchParams.get('v');
-        }
-        
-        if (videoId) {
-          // Return YouTube thumbnail with link as fallback (avoid backticks in outer template)
-          return (
-            '<div class="youtube-container">' +
-              '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer">' +
-                '<div class="youtube-thumbnail">' +
-                  '<img src="https://img.youtube.com/vi/' + videoId + '/0.jpg" alt="YouTube Thumbnail" loading="lazy" ' +
-                       'onerror="this.src=\'https://cdn.jsdelivr.net/gh/twitter/twemoji/assets/72x72/25b6.png\'; this.style.width=\'72px\'; this.style.height=\'72px\';">' +
-                  '<div class="youtube-play-icon">▶</div>' +
-                '</div>' +
-                '<span class="link-text">Watch on YouTube</span>' +
-              '</a>' +
-            '</div>'
-          );
-        } else {
-          // Fallback to regular link
-          return '<a href="' + url + '" class="post-link youtube" target="_blank" rel="noopener noreferrer"><span class="link-text">Watch on YouTube: ' + url + '</span></a>';
-        }
-      })
-    }
-    </div>
+    <div class="article">${threadContentHtml}</div>
     
     <div class="action-buttons">
       <button class="action-button copy-button" onclick="(window.copyText2||window.copyText||function(){alert('Copy unavailable')}).call(this)">Copy Text</button>
