@@ -1518,6 +1518,8 @@ async function generateHtmlContent(data) {
 
     // Expose handlers on window to be callable from onclick attributes
     window.copyText2 = copyText2;
+    // Backward-compat: some previews may still call copyText()
+    window.copyText = copyText2;
     window.downloadImages = downloadImages;
     window.toggleEditMode = toggleEditMode;
     window.saveAsMarkdown = saveAsMarkdown;
