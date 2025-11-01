@@ -2,8 +2,15 @@
 
 // Convert rendered HTML to plain text with preserved line breaks and paragraphs
 function htmlToPlainText(html) {
+  let s = String(html || '');
+  // Convert <br> to newline
+  s = s.replace(/<br\s*\/?>(\s*)/gi, '\n');
+  // Insert blank lines after common block elements when they close
+  s = s.replace(/<\/(?:p|div|section|article|li|ul|ol|h[1-6])>/gi, '$&\n\n');
+  // Remove opening tags of those blocks (no extra newline)
+  s = s.replace(/<(?:p|div|section|article|li|ul|ol|h[1-6])[^>]*>/gi, '');
   const div = document.createElement('div');
-  div.innerHTML = String(html || '').replace(/<br\s*\/?>(\s*)/gi, '\n');
+  div.innerHTML = s;
   const text = div.textContent || '';
   return text.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -33,19 +40,34 @@ function sanitizeFilename(base, idx = 1, dateStr = '', domain = 'threads') {
 
 // Apply rule-based cleaning patterns safely
 function applyCleaningPatterns(text, patterns) {
-  let out = String(text || '');
-  (patterns || []).forEach(p => { try { out = out.replace(p, ''); } catch (_) {} });
-  return out.replace(/\n{3,}/g, '\n\n').trim();
+  const lines = String(text || '').split(/\n/);
+  const preds = (patterns || []).map(p => (p instanceof RegExp ? p : new RegExp(p, 'i')));
+  const out = [];
+  let removedSinceLastKeep = false;
+  for (const raw of lines) {
+    const line = raw;
+    const shouldRemove = preds.some(r => r.test(line.trim()));
+    if (shouldRemove) { removedSinceLastKeep = true; continue; }
+    if (out.length > 0 && removedSinceLastKeep && out[out.length - 1] !== '') {
+      out.push('');
+    }
+    removedSinceLastKeep = false;
+    out.push(line);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // Language-agnostic heuristic cleaning
 function heuristicClean(text) {
-  let out = String(text || '');
-  // Standalone handles
-  out = out.replace(/^@?[a-z0-9._-]{3,20}\s*$/gim, '');
-  // 2-3 lines of pure small numbers (likely metrics)
-  out = out.replace(/^(\d{1,3})\s*$\n^(\d{1,3})\s*$(?:\n^(\d{1,3})\s*$)?/gim, '');
-  return out.replace(/\n{3,}/g, '\n\n').trim();
+  const lines = String(text || '').split(/\n/);
+  const kept = lines.filter(l => {
+    const t = l.trim();
+    if (t === '') return true; // preserve gaps (will be collapsed later)
+    if (/^@?[a-z0-9._-]{3,20}$/i.test(t)) return false; // standalone handle
+    if (/^\d{1,3}$/.test(t)) return false; // numeric-only small count
+    return true;
+  });
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // Build Markdown from HTML and metadata
