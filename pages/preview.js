@@ -94,7 +94,8 @@
     const info = document.getElementById('threadInfo')?.textContent || '';
     const source = (state.renderData && state.renderData.originalUrl) ? String(state.renderData.originalUrl) : '';
     const header = '# ' + author + ' ' + handle + '\n' + '> ' + info + (source ? '\n> Source: ' + source : '') + '\n\n';
-    return header + text + '\n';
+    const footer = source ? '\n\nSource: ' + source + '\n' : '\n';
+    return header + text + footer;
   }
 
   function copyMarkdown(){
@@ -106,7 +107,8 @@
 
   function saveTxt(){
     const article = document.getElementById('article'); if(!article) return;
-    const txt = htmlToPlain(article) + '\n';
+    const source = (state.renderData && state.renderData.originalUrl) ? String(state.renderData.originalUrl) : '';
+    const txt = htmlToPlain(article) + (source ? '\n\nSource: ' + source + '\n' : '\n');
     const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob); state.blobUrls.push(url);
     try{ chrome.downloads.download({ url, filename: 'thread.txt', saveAs: true }); }catch(e){ const a=document.createElement('a'); a.href=url; a.download='thread.txt'; document.body.appendChild(a); a.click(); a.remove(); }
