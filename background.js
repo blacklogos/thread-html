@@ -874,6 +874,18 @@ async function generateHtmlContent(data) {
     .replace(/<br>\s*<br>\s*<br>\s*<br>+/g, '<br><br><br>')  // Max triple breaks between posts
     .trim();
 
+  // Remove recency-only lines that may slip through (VN + EN), when represented with <br> boundaries
+  try {
+    // Patterns like: "42 phút", "1 ngày", "about 2 hours", "2 days ago", "khoảng 3 giờ trước"
+    const recencyRe = new RegExp(
+      '(^|<br>)\\s*(?:about\\s*|khoảng\\s*)?\\d{1,3}\\s*(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years|phút|giờ|ngày|tuần|tháng|năm)(?:\\s*(?:ago|trước))?\\s*(?=<br>|$)',
+      'gi'
+    );
+    threadContent = threadContent.replace(recencyRe, (m, br) => br ? br : '');
+    // Clean excess breaks that may result
+    threadContent = threadContent.replace(/(?:^<br>|<br>$)/g, '').replace(/(<br>){3,}/g, '<br><br>');
+  } catch (e) { console.warn('Recency HTML cleanup failed:', e); }
+
   // Apply final cleaning to remove common patterns of handle repeats not caught earlier
   threadContent = threadContent
     // Remove full patterns like "John Doe (@johndoe):" at the start of lines
@@ -1954,7 +1966,7 @@ async function generateHtmlContent(data) {
     
     <footer>
       <p>Thread by ${authorName} (${authorUsername}) on ${originalDate ? originalDate : 'Threads'}</p>
-      <p>Exported using Thread HTML Extension</p>
+      <p>Exported using Thread HTML Extension · Source: <a href="${threadUrl}" target="_blank" rel="noopener noreferrer">${threadUrl}</a></p>
     </footer>
   </div>
 </body>
@@ -1972,6 +1984,7 @@ async function generateHtmlContent(data) {
       avatarColor: avatarColor,
       authorInitials: authorInitials,
       originalDate: originalDate,
+      originalUrl: threadUrl,
       totalWords: totalWords,
       readTimeMinutes: readTimeMinutes,
       threadContentHtml: threadContentHtml,
