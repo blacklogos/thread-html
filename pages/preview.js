@@ -227,6 +227,21 @@
 
   document.addEventListener('DOMContentLoaded', ()=>{
     bindUI();
+    // Keyboard shortcuts (no modifiers, ignore when typing)
+    document.addEventListener('keydown', (e)=>{
+      try{
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+        const tag = (e.target && e.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        if (document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('contenteditable') === 'true') return;
+        if (e.key === 'c') { e.preventDefault(); document.getElementById('btnCopy')?.click(); return; }
+        if (e.key === 'p') { e.preventDefault(); document.getElementById('btnPdf')?.click(); return; }
+        if (e.key === 'm' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnMd')?.click(); return; }
+        if (e.key === 'M' || (e.key === 'm' && e.shiftKey)) { e.preventDefault(); document.getElementById('btnCopyMd')?.click(); return; }
+        if (e.key === 't') { e.preventDefault(); document.getElementById('btnTxt')?.click(); return; }
+        if (e.key === 'e') { e.preventDefault(); document.getElementById('btnEdit')?.click(); return; }
+      }catch(_){/* noop */}
+    });
     try {
       chrome.runtime.onMessage.addListener((msg)=>{
         if (msg && msg.type === 'preview:init') { render(msg.payload || {}); }
