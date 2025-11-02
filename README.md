@@ -1,71 +1,64 @@
-# Thread-html
+# Threads to HTML (Chrome Extension)
 
-A Chrome extension for exporting Threads.net posts as clean, formatted HTML, PDF, and Markdown files.
+Convert Threads posts (threads.com / threads.net) into clean HTML with a stable in‑extension preview, copy, PDF, and Markdown export.
 
 ## Features
 
-- Clean and format Threads.net posts for easy reading
-- Remove unwanted metadata, engagement metrics, and redundant author handles
-- Convert posts to HTML with a responsive, clean design
-- Interactive editing mode to highlight and remove content
-- Export as PDF (using print functionality)
-- Export as Markdown
-- Smart Vietnamese content preservation (keeps numbered lists, principles, etc.)
-- Works with single posts and entire threads
+- Preview in extension page (MV3‑safe, no inline JS)
+- Copy Text (clipboard API + fallbacks)
+- Save PDF (browser print)
+- Save as Markdown (header + cleaned content)
+- Images:
+  - Preview displays images; auto‑proxy for hosts that block cross‑origin (fbcdn/cdninstagram)
+  - “Images in thread” section with deduped links (params intact), labeled “image 1..N”
+  - Premium: “Download Thread Images” button (bulk download; gating to be added later)
+- Content cleanup:
+  - Removes UI label “Hàng đầu” from content
+  - No post separators (---)
+- Export HTML:
+  - Uses in‑text markers ([Image: URL], [YouTube: URL]) only (no per‑post embedding)
+  - Filenames like `thread_<author>_<timestamp>.html`
 
-## Recent Updates
+## Permissions
 
-- **Enhanced content cleaning** - Improved patterns to detect and remove standalone numbers, metrics, and author handles 
-- **Vietnamese content preservation** - Better detection of important content like "Nguyên tắc 1, 2, 3"
-- **Author handle display fix** - Properly handle dots, underscores, and special characters in author usernames
-- **Interactive editing** - Added hover highlighting and click-to-remove functionality
-- **Multiple export formats** - Added support for HTML, PDF, and Markdown exports
+- permissions: `activeTab`, `downloads`, `scripting`
+- host_permissions:
+  - `*://*.threads.com/*`, `*://*.threads.net/*`
+  - `*://*.fbcdn.net/*`, `*://*.cdninstagram.com/*` (for image proxy in preview)
 
-## Usage
+## Install
 
-1. Install the extension from the Chrome Web Store
-2. Navigate to a Threads.net post you want to export
-3. Click the extension icon
-4. Choose whether to export just the current post or the entire thread
-5. Click "Preview" to view the cleaned content
-6. Use the interactive editing buttons to further customize the content
-7. Choose your preferred export format (HTML, PDF, Markdown)
+1. Clone or download this repo.
+2. Open Chrome → `chrome://extensions`.
+3. Enable “Developer mode”.
+4. Click “Load unpacked” and select the repository folder.
 
-## Content Cleaning
+## Use
 
-The extension uses several approaches to clean Thread posts:
+1. Open a Threads post (threads.com or threads.net).
+2. Click the extension icon → “Preview”.
+3. In the preview tab:
+   - Copy Text, Save PDF, Save as MD
+   - View “Images in thread” links (image 1..N)
+   - Load blocked images via auto‑proxy; use “Load via Proxy” if needed
+   - Premium: “Download Thread Images” (bulk)
 
-- Removes engagement metrics (likes, views, shares)
-- Cleans up repeated author handles at the beginning of posts
-- Preserves important content including Vietnamese numbered lists
-- Removes standalone numbers that indicate metrics
-- Keeps content structure while removing UI elements and metadata
+## Notes and Limitations
 
-## Interactive Editing
+- Preview can proxy blocked images (fbcdn/cdninstagram). Exported HTML is static and cannot proxy; images may not render if the host blocks cross‑origin.
+- URL parameters for image links are preserved (and used for dedupe).
+- “Hàng đầu” label (VN UI copy) is removed; other languages will be added later.
 
-The HTML preview includes an "Edit Mode" that lets you:
-- Hover over content to highlight it
-- Click elements to remove them
-- Undo deletions with a single click
-- Exit edit mode to return to normal viewing
+## Troubleshooting
 
-## Exporting
+- “Please navigate to a Threads post”: ensure you’re on threads.com or threads.net.
+- Images not visible in preview: try the “Load via Proxy” button on placeholders.
+- Preview didn’t open: reload the extension and try again.
 
-After previewing and editing, you can:
-- Download as HTML
-- Save as PDF (using built-in printing)
-- Export as Markdown
-- Copy text to clipboard
+## What’s New (this version)
 
-## Development
-
-To contribute to this project:
-
-1. Clone the repository
-2. Make your changes
-3. Test the extension in Chrome by loading it as an unpacked extension
-4. Submit a pull request with your changes
-
-## License
-
-This project is licensed under the MIT License. 
+- Stable preview page (pages/preview.html/js), MV3‑compliant
+- Background image proxy (`proxyFetchImage`) with limited host permissions
+- Images list section with preserved URL params; Premium bulk download button
+- Removed per‑post mediaUrls embedding; export relies on [Image:] and [YouTube:] markers
+- Strips “Hàng đầu”; removed separators
