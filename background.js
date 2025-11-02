@@ -839,7 +839,21 @@ async function generateHtmlContent(data) {
   );
   
   // Use non-empty posts or default to original cleaned posts if all were filtered out
-  const finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
+  let finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
+
+  // Remove recency/UI-only lines from each post (line-anchored)
+  function cleanRecencyUiLines(text) {
+    try {
+      const lines = String(text || '').split(/\n+/);
+      const reVN = /^(?:\s*(?:khoảng\s*)?)\d{1,3}\s*(?:phút|giờ|ngày|tuần|tháng|năm)(?:\s*trước)?\s*$/i;
+      const reEN = /^(?:\s*(?:about\s*)?)\d{1,3}\s*(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)(?:\s*ago)?\s*$/i;
+      const reUI = /^(?:hàng\s*đầu|hang\s*dau|xem\s*hoạt\s*động|xem\s*hoat\s*dong|dịch|dich)\s*$/i;
+      return lines.filter(l => !(reVN.test(l) || reEN.test(l) || reUI.test(l))).join('\n');
+    } catch (e) {
+      return text || '';
+    }
+  }
+  finalPosts = finalPosts.map(cleanRecencyUiLines);
 
   // Remove platform UX labels from the first post, e.g., Vietnamese "Hàng đầu" and other languages
   if (finalPosts.length > 0) {
@@ -1143,6 +1157,15 @@ async function generateHtmlContent(data) {
   }
 
   var threadContentHtml = finalPosts.map(postToHtml).join('<br><br>');
+
+  // Safety: remove any leftover recency/UI-only lines at HTML level (between <br> boundaries)
+  try {
+    const recencyHtml = new RegExp('(^|<br>)\\s*(?:about\\s*|khoảng\\s*)?\\d{1,3}\\s*(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years|phút|giờ|ngày|tuần|tháng|năm)(?:\\s*(?:ago|trước))?\\s*(?=<br>|$)', 'gi');
+    const uiHtml = new RegExp('(^|<br>)\\s*(?:hàng\\s*đầu|hang\\s*dau|xem\\s*hoạt\\s*động|xem\\s*hoat\\s*dong|dịch|dich)\\s*(?=<br>|$)', 'gi');
+    threadContentHtml = threadContentHtml.replace(recencyHtml, (m, br) => br ? br : '');
+    threadContentHtml = threadContentHtml.replace(uiHtml, (m, br) => br ? br : '');
+    threadContentHtml = threadContentHtml.replace(/(<br>){3,}/g, '<br><br>').replace(/^(?:<br>)+|(?:<br>)+$/g, '');
+  } catch (e) { console.warn('HTML-level recency/UI cleanup failed:', e); }
 
   // Collect all image URLs across posts (dedupe; keep params intact)
   var imageSet = new Set();
