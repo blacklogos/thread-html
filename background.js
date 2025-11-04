@@ -839,7 +839,21 @@ async function generateHtmlContent(data) {
   );
   
   // Use non-empty posts or default to original cleaned posts if all were filtered out
-  const finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
+  let finalPosts = nonEmptyPosts.length > 0 ? nonEmptyPosts : cleanedPosts;
+
+  // Remove recency/UI-only lines from each post (line-anchored)
+  function cleanRecencyUiLines(text) {
+    try {
+      const lines = String(text || '').split(/\n+/);
+      const reVN = /^(?:\s*(?:khoảng\s*)?)\d{1,3}\s*(?:phút|giờ|ngày|tuần|tháng|năm)(?:\s*trước)?\s*$/i;
+      const reEN = /^(?:\s*(?:about\s*)?)\d{1,3}\s*(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)(?:\s*ago)?\s*$/i;
+      const reUI = /^(?:hàng\s*đầu|hang\s*dau|xem\s*hoạt\s*động|xem\s*hoat\s*dong|dịch|dich)\s*$/i;
+      return lines.filter(l => !(reVN.test(l) || reEN.test(l) || reUI.test(l))).join('\n');
+    } catch (e) {
+      return text || '';
+    }
+  }
+  finalPosts = finalPosts.map(cleanRecencyUiLines);
 
   // Remove platform UX labels from the first post, e.g., Vietnamese "Hàng đầu" and other languages
   if (finalPosts.length > 0) {
@@ -873,6 +887,18 @@ async function generateHtmlContent(data) {
     .join('<br>')                                // Convert to HTML breaks
     .replace(/<br>\s*<br>\s*<br>\s*<br>+/g, '<br><br><br>')  // Max triple breaks between posts
     .trim();
+
+  // Remove recency-only lines that may slip through (VN + EN), when represented with <br> boundaries
+  try {
+    // Patterns like: "42 phút", "1 ngày", "about 2 hours", "2 days ago", "khoảng 3 giờ trước"
+    const recencyRe = new RegExp(
+      '(^|<br>)\\s*(?:about\\s*|khoảng\\s*)?\\d{1,3}\\s*(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years|phút|giờ|ngày|tuần|tháng|năm)(?:\\s*(?:ago|trước))?\\s*(?=<br>|$)',
+      'gi'
+    );
+    threadContent = threadContent.replace(recencyRe, (m, br) => br ? br : '');
+    // Clean excess breaks that may result
+    threadContent = threadContent.replace(/(?:^<br>|<br>$)/g, '').replace(/(<br>){3,}/g, '<br><br>');
+  } catch (e) { console.warn('Recency HTML cleanup failed:', e); }
 
   // Apply final cleaning to remove common patterns of handle repeats not caught earlier
   threadContent = threadContent
@@ -1131,6 +1157,15 @@ async function generateHtmlContent(data) {
   }
 
   var threadContentHtml = finalPosts.map(postToHtml).join('<br><br>');
+
+  // Safety: remove any leftover recency/UI-only lines at HTML level (between <br> boundaries)
+  try {
+    const recencyHtml = new RegExp('(^|<br>)\\s*(?:about\\s*|khoảng\\s*)?\\d{1,3}\\s*(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years|phút|giờ|ngày|tuần|tháng|năm)(?:\\s*(?:ago|trước))?\\s*(?=<br>|$)', 'gi');
+    const uiHtml = new RegExp('(^|<br>)\\s*(?:hàng\\s*đầu|hang\\s*dau|xem\\s*hoạt\\s*động|xem\\s*hoat\\s*dong|dịch|dich)\\s*(?=<br>|$)', 'gi');
+    threadContentHtml = threadContentHtml.replace(recencyHtml, (m, br) => br ? br : '');
+    threadContentHtml = threadContentHtml.replace(uiHtml, (m, br) => br ? br : '');
+    threadContentHtml = threadContentHtml.replace(/(<br>){3,}/g, '<br><br>').replace(/^(?:<br>)+|(?:<br>)+$/g, '');
+  } catch (e) { console.warn('HTML-level recency/UI cleanup failed:', e); }
 
   // Collect all image URLs across posts (dedupe; keep params intact)
   var imageSet = new Set();
@@ -1954,7 +1989,7 @@ async function generateHtmlContent(data) {
     
     <footer>
       <p>Thread by ${authorName} (${authorUsername}) on ${originalDate ? originalDate : 'Threads'}</p>
-      <p>Exported using Thread HTML Extension</p>
+      <p>Exported using Thread HTML Extension · Source: <a href="${threadUrl}" target="_blank" rel="noopener noreferrer">${threadUrl}</a></p>
     </footer>
   </div>
 </body>
@@ -1972,6 +2007,7 @@ async function generateHtmlContent(data) {
       avatarColor: avatarColor,
       authorInitials: authorInitials,
       originalDate: originalDate,
+      originalUrl: threadUrl,
       totalWords: totalWords,
       readTimeMinutes: readTimeMinutes,
       threadContentHtml: threadContentHtml,

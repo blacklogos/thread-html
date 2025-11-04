@@ -80,15 +80,38 @@
 
   function saveAsMarkdown(){
     const article = document.getElementById('article'); if(!article) return;
+    const md = buildMarkdown();
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob); state.blobUrls.push(url);
+    try{ chrome.downloads.download({ url, filename: 'thread.md', saveAs: true }); }catch(e){ const a=document.createElement('a'); a.href=url; a.download='thread.md'; document.body.appendChild(a); a.click(); a.remove(); }
+  }
+
+  function buildMarkdown(){
+    const article = document.getElementById('article');
     const text = htmlToPlain(article);
     const author = document.getElementById('authorName')?.textContent || 'Unknown Author';
     const handle = document.getElementById('authorUsername')?.textContent || '';
     const info = document.getElementById('threadInfo')?.textContent || '';
-    const header = '# ' + author + ' ' + handle + '\n' + '> ' + info + '\n\n';
-    const md = header + text + '\n';
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const source = (state.renderData && state.renderData.originalUrl) ? String(state.renderData.originalUrl) : '';
+    const header = '# ' + author + ' ' + handle + '\n' + '> ' + info + (source ? '\n> Source: ' + source : '') + '\n\n';
+    const footer = source ? '\n\nSource: ' + source + '\n' : '\n';
+    return header + text + footer;
+  }
+
+  function copyMarkdown(){
+    const md = buildMarkdown();
+    function ok(){ showToast('Markdown copied'); }
+    function fb(){ try{ const ta=document.createElement('textarea'); ta.value=md; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.focus(); ta.select(); const okc=document.execCommand('copy'); document.body.removeChild(ta); if(okc){ ok(); return; } }catch(e){} alert('Failed to copy markdown.'); }
+    if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(md).then(ok).catch(fb); } else { fb(); }
+  }
+
+  function saveTxt(){
+    const article = document.getElementById('article'); if(!article) return;
+    const source = (state.renderData && state.renderData.originalUrl) ? String(state.renderData.originalUrl) : '';
+    const txt = htmlToPlain(article) + (source ? '\n\nSource: ' + source + '\n' : '\n');
+    const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob); state.blobUrls.push(url);
-    try{ chrome.downloads.download({ url, filename: 'thread.md', saveAs: true }); }catch(e){ const a=document.createElement('a'); a.href=url; a.download='thread.md'; document.body.appendChild(a); a.click(); a.remove(); }
+    try{ chrome.downloads.download({ url, filename: 'thread.txt', saveAs: true }); }catch(e){ const a=document.createElement('a'); a.href=url; a.download='thread.txt'; document.body.appendChild(a); a.click(); a.remove(); }
   }
 
   function attachImgFallbacks(root){
@@ -156,6 +179,11 @@
     const article = document.getElementById('article');
     article.innerHTML = data.threadContentHtml || '';
     attachImgFallbacks(article);
+    try {
+      const sourceContainer = document.getElementById('sourceContainer');
+      const link = document.getElementById('sourceLink');
+      if (data.originalUrl) { link.href = data.originalUrl; link.textContent = data.originalUrl; sourceContainer.style.display = 'inline'; } else { sourceContainer.style.display = 'none'; }
+    } catch(e) {}
 
     // Build images list from renderData.imageUrls if available
     try {
@@ -179,6 +207,8 @@
     document.getElementById('btnPdf').addEventListener('click', ()=> window.print());
     document.getElementById('btnEdit').addEventListener('click', toggleEditMode);
     document.getElementById('btnMd').addEventListener('click', saveAsMarkdown);
+    document.getElementById('btnCopyMd').addEventListener('click', copyMarkdown);
+    document.getElementById('btnTxt').addEventListener('click', saveTxt);
     const premiumBtn = document.getElementById('btnImagesPremium');
     premiumBtn.addEventListener('click', ()=>{
       const urls = state.threadImageUrls||[]; if(!urls.length){ showToast('No thread images'); return; }
@@ -197,6 +227,21 @@
 
   document.addEventListener('DOMContentLoaded', ()=>{
     bindUI();
+    // Keyboard shortcuts (no modifiers, ignore when typing)
+    document.addEventListener('keydown', (e)=>{
+      try{
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+        const tag = (e.target && e.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        if (document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('contenteditable') === 'true') return;
+        if (e.key === 'c') { e.preventDefault(); document.getElementById('btnCopy')?.click(); return; }
+        if (e.key === 'p') { e.preventDefault(); document.getElementById('btnPdf')?.click(); return; }
+        if (e.key === 'm' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnMd')?.click(); return; }
+        if (e.key === 'M' || (e.key === 'm' && e.shiftKey)) { e.preventDefault(); document.getElementById('btnCopyMd')?.click(); return; }
+        if (e.key === 't') { e.preventDefault(); document.getElementById('btnTxt')?.click(); return; }
+        if (e.key === 'e') { e.preventDefault(); document.getElementById('btnEdit')?.click(); return; }
+      }catch(_){/* noop */}
+    });
     try {
       chrome.runtime.onMessage.addListener((msg)=>{
         if (msg && msg.type === 'preview:init') { render(msg.payload || {}); }

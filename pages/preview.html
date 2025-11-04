@@ -33,12 +33,17 @@
     .post-image { max-width: 100%; height: auto; border-radius: 8px; margin: 15px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
     .post-link { display: block; margin: 15px 0; padding: 12px 15px; border: 1px solid var(--border-color); border-radius: 8px; text-decoration: none; color: var(--text-color); background-color: #f8f9fa; transition: all 0.2s ease; font-size: 0.95em; word-break: break-all; }
     .post-link:hover { background-color: #f1f3f5; border-color: #dee2e6; text-decoration: none; transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .action-buttons { margin-top: 15px; display: flex; gap: 10px; }
-    .action-button { padding: 6px 12px; font-size: 0.9rem; border: none; border-radius: 4px; background-color: var(--button-bg); color: white; cursor: pointer; transition: background-color 0.2s; }
-    .action-button:hover { background-color: var(--button-hover); }
+    /* New actions toolbar */
+    .actions-bar { position: sticky; bottom: 0; z-index: 5; background: linear-gradient(180deg, rgba(255,255,255,0), var(--bg-color) 30%); padding: 10px 0 0; border-top: 1px solid var(--border-color); margin-top: 20px; }
+    .actions-primary, .actions-secondary, .actions-toggle { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .btn { padding: 6px 10px; font-size: 0.9rem; border-radius: 6px; border: 1px solid var(--border-color); background: #f7f7f9; color: var(--text-color); cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+    .btn:hover { background: #eef1f5; }
+    .btn.primary { background: var(--button-bg); color: #fff; border-color: var(--button-bg); }
+    .btn.primary:hover { background: var(--button-hover); border-color: var(--button-hover); }
+    @media (max-width: 600px) { .actions-primary, .actions-secondary, .actions-toggle { gap: 6px; } .btn { padding: 6px 8px; } }
     .toast { position: fixed; bottom: 20px; right: 20px; background-color: #28a745; color: white; padding: 10px 20px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); animation: fadeOut 2s forwards; }
     @keyframes fadeOut { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
-    @media print { .action-buttons { display: none; } }
+    @media print { .actions-bar { display: none; } }
     .img-fallback { display: inline-block; padding: 12px; border: 1px dashed var(--border-color); border-radius: 6px; color: var(--muted-color); font-size: 0.9rem; }
     .img-actions { margin-top: 6px; display: flex; gap: 8px; }
   </style>
@@ -65,14 +70,22 @@
         <span style="color: var(--muted-color); font-size: 0.9rem;">Uses extracted media URLs</span>
       </div>
     </div>
-    <div class="action-buttons">
-      <button id="btnCopy" class="action-button copy-button">Copy Text</button>
-      <button id="btnPdf" class="action-button">Save PDF</button>
-      <button id="btnEdit" class="action-button">Edit Mode</button>
-      <button id="btnMd" class="action-button">Save as MD</button>
+    <div class="actions-bar">
+      <div class="actions-primary">
+        <button id="btnCopy" class="btn primary copy-button" title="Copy text (c)">📋 Copy</button>
+        <button id="btnPdf" class="btn primary" title="Save PDF (p)">🖨️ PDF</button>
+      </div>
+      <div class="actions-secondary">
+        <button id="btnMd" class="btn" title="Save Markdown (m)">⌗ Save MD</button>
+        <button id="btnCopyMd" class="btn" title="Copy Markdown (Shift+M)">⧉ Copy MD</button>
+        <button id="btnTxt" class="btn" title="Save Text (t)">📝 TXT</button>
+      </div>
+      <div class="actions-toggle">
+        <button id="btnEdit" class="btn" title="Toggle edit (e)">✎ Edit</button>
+      </div>
     </div>
     <footer style="margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--border-color); color: var(--muted-color); font-size: 0.9rem; text-align: center;">
-      Exported using Thread HTML Extension
+      Exported using Thread HTML Extension · <span id="sourceContainer" style="display:none;">Source: <a id="sourceLink" href="#" target="_blank" rel="noopener noreferrer"></a></span>
     </footer>
   </div>
   <script src="preview.js"></script>
