@@ -1,6 +1,14 @@
 # Threads to HTML (Chrome Extension)
 
 Threads to HTML turns any Threads post into a polished offline archive with an interactive preview tab, clean exports, and tooling that respects Chrome’s MV3 rules.
+<div>
+    <a href="https://www.loom.com/share/d3fc421dc69f46a5b9f838f76805e326">
+      <p>Intro and how to use Threads to HTML Chrome Extension - Watch Video</p>
+    </a>
+    <a href="https://www.loom.com/share/d3fc421dc69f46a5b9f838f76805e326">
+      <img style="max-width:300px;" src="https://cdn.loom.com/sessions/thumbnails/d3fc421dc69f46a5b9f838f76805e326-ae8bea8ce919a00c-full-play.gif#t=0.1">
+    </a>
+  </div>
 
 ## Highlights
 
